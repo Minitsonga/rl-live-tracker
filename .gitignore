@@ -13,3 +13,6 @@ logs/*.log
 
 .idea/
 .vscode/
+
+# Local tooling (not part of the app)
+.tools/
