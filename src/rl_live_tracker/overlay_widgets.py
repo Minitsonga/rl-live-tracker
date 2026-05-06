@@ -152,7 +152,20 @@ class TransparentOverlay(QWidget):
             lbl.setFixedWidth(mw)
         else:
             lbl.setWordWrap(False)
-            lbl.setFixedWidth(min(natural, mw))
+            if not self._want_word_wrap:
+                # Session card: width_session is only a hard cap with min(natural, mw).
+                # If content is narrower than the cap, raising width_session does nothing unless
+                # session_width_fill blends toward the cap (0 = tight, 1 = full cap width).
+                fill = float(self.cfg.get("session_width_fill", 0.0) or 0.0)
+                fill = max(0.0, min(1.0, fill))
+                if mw >= natural:
+                    wid = int(round(natural + (mw - natural) * fill))
+                else:
+                    wid = mw
+                wid = max(32, min(wid, mw))
+                lbl.setFixedWidth(wid)
+            else:
+                lbl.setFixedWidth(min(natural, mw))
 
         lbl.adjustSize()
         self.adjustSize()

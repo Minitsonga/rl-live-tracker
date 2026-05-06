@@ -25,7 +25,8 @@
   "position_session": "top-right",
   "position_roster": "top-left",
   "margin": 12,
-  "width_session": 200,
+  "width_session": 180,
+  "session_width_fill": 0.0,
   "width_roster": 268,
   "background_rgba": [
     6,

@@ -40,7 +40,10 @@ DEFAULT_CONFIG = {
     "position_roster": "top-left",
     "margin": 12,
     # Largeur maximale du contenu (les overlays peuvent être plus étroits selon le texte).
-    "width_session": 200,
+    "width_session": 180,
+    # Carte session seule : 0 = largeur au contenu (plafonnée par width_session). Entre 0 et 1 = élargir
+    # vers le plafond pour que monter width_session (ex. 260) se voie même si le texte est plus étroit.
+    "session_width_fill": 0.0,
     "width_roster": 268,
     "background_rgba": [6, 8, 12, 68],
     "border_rgba": [0, 200, 255, 28],
