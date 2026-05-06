@@ -1,0 +1,57 @@
+{
+  "_comment": "RL Live Tracker - copy this file to data/config.json and edit values as needed.",
+  "host": "127.0.0.1",
+  "port": 49123,
+  "mmr_enabled": true,
+  "api_debug_dump": false,
+  "self_player_id": null,
+  "require_rl_focus": true,
+  "menu_toggle_hotkeys": [
+    "f5"
+  ],
+  "toggle_hotkeys": [],
+  "roster_toggle_hotkeys": [],
+  "mmr_tracker_toggle_hotkeys": [],
+  "mmr_ingame_toggle_hotkeys": [],
+  "overlay_screen": "primary",
+  "show_mmr_ingame": true,
+  "roster_mmr_preset": "full",
+  "show_session_overlay": true,
+  "show_roster_overlay": false,
+  "position_session_anchor": "top-right",
+  "position_roster_anchor": "top-left",
+  "position_session_custom_xy": null,
+  "position_roster_custom_xy": null,
+  "position_session": "top-right",
+  "position_roster": "top-left",
+  "margin": 12,
+  "width_session": 200,
+  "width_roster": 268,
+  "background_rgba": [
+    6,
+    8,
+    12,
+    68
+  ],
+  "border_rgba": [
+    0,
+    200,
+    255,
+    28
+  ],
+  "border_radius_px": 4,
+  "text_color": "#f4f7fc",
+  "label_color": "#d4e2f4",
+  "accent_color": "#00c8ff",
+  "win_color": "#00e5a0",
+  "loss_color": "#ff4060",
+  "muted_color": "#b8c6d9",
+  "font_family": "Segoe UI",
+  "font_size": 10,
+  "overlay_padding_px": [
+    4,
+    6
+  ],
+  "overlays_visible_default": true,
+  "roster_visible_default": false
+}

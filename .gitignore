@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+data/*.json
+data/*.jsonl
+data/.rl-live-tracker.lock
+!data/.gitkeep
+
+logs/*.log
+!logs/.gitkeep
+
+.idea/
+.vscode/
