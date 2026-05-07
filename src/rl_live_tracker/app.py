@@ -20,7 +20,11 @@ from .focus_rl import (
 )
 from .mmr import MMRClient, RANKED_PLAYLISTS
 from .paths import DATA_DIR, now_iso
-from .render_roster import render_roster_html, roster_overlay_empty_html
+from .render_roster import (
+    render_roster_html,
+    render_roster_preview_html,
+    roster_overlay_empty_html,
+)
 from .render_session import render_session_html
 from .menu_overlay import MenuPanel
 from .overlay_widgets import TransparentOverlay
@@ -131,6 +135,7 @@ class AppController(QObject):
         }
         self.poll_token = 0
         self._last_lobby_sig: Any = None
+        self._lobby_preview_enabled = False
 
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
@@ -227,6 +232,7 @@ class AppController(QObject):
 
     def _sync_overlay_visibility(self) -> None:
         """Session, roster et menu réglages : masqués si RL n'est pas au premier plan (si activé)."""
+        roster_visible = bool(self._visibility["roster"] or self._lobby_preview_enabled)
         allow = True
         if self.cfg.get("require_rl_focus"):
             allow = is_rocket_league_foreground()
@@ -258,7 +264,7 @@ class AppController(QObject):
                         self.overlay_session.raise_()
                     else:
                         self.overlay_session.hide()
-                    if self._visibility["roster"]:
+                    if roster_visible:
                         self.overlay_roster.show()
                         self.overlay_roster.raise_()
                     else:
@@ -281,7 +287,7 @@ class AppController(QObject):
             self.overlay_session.show()
         else:
             self.overlay_session.hide()
-        if self._visibility["roster"]:
+        if roster_visible:
             self.overlay_roster.show()
         else:
             self.overlay_roster.hide()
@@ -327,6 +333,7 @@ class AppController(QObject):
             self._visibility["session"],
             self._visibility["roster"],
             bool(self.cfg.get("show_mmr_ingame", True)),
+            self._lobby_preview_enabled,
         )
         return True
 
@@ -352,6 +359,7 @@ class AppController(QObject):
         self._menu.anchorChanged.connect(self._on_menu_anchor)
         self._menu.themePresetChanged.connect(self._on_menu_theme_preset)
         self._menu.overlayOpacityChanged.connect(self._on_menu_overlay_opacity)
+        self._menu.lobbyPreviewToggled.connect(self._on_menu_lobby_preview_toggled)
         self._menu.dragRequested.connect(self._on_menu_drag_requested)
         self._menu.dragFinished.connect(self._on_menu_drag_finished)
         self._menu.menuClosed.connect(self._sync_tray_from_state)
@@ -411,6 +419,10 @@ class AppController(QObject):
         save_config(self.cfg)
         self._do_refresh()
 
+    def _on_menu_lobby_preview_toggled(self, checked: bool) -> None:
+        self._lobby_preview_enabled = bool(checked)
+        self._do_refresh()
+
     def _on_menu_drag_requested(self) -> None:
         self._set_drag_mode(True)
 
@@ -428,6 +440,7 @@ class AppController(QObject):
                 self._visibility["session"],
                 self._visibility["roster"],
                 bool(self.cfg.get("show_mmr_ingame", True)),
+                self._lobby_preview_enabled,
             )
         self._do_refresh()
 
@@ -720,6 +733,8 @@ class AppController(QObject):
                 self.cfg, roster, self._mmr_db(), pl
             )
             self.overlay_roster.set_html(html_r)
+        elif self._lobby_preview_enabled:
+            self.overlay_roster.set_html(render_roster_preview_html(self.cfg))
         else:
             self.overlay_roster.set_html(roster_overlay_empty_html(self.cfg))
 

@@ -40,6 +40,7 @@ class MenuPanel(QWidget):
     rosterMmrPresetChanged = Signal(str)
     themePresetChanged = Signal(str)
     overlayOpacityChanged = Signal(str, int)  # which: "session"|"roster"
+    lobbyPreviewToggled = Signal(bool)
     anchorChanged = Signal(str, str)  # "session"|"roster", anchor id
     dragRequested = Signal()
     dragFinished = Signal()
@@ -177,6 +178,19 @@ class MenuPanel(QWidget):
         r_layout.addWidget(sec_roster)
         self._roster_group, rost_row = self._build_anchor_row("roster")
         r_layout.addLayout(rost_row)
+        self._cb_lobby_preview = QCheckBox("Preview lobby overlay (outside match)")
+        self._cb_lobby_preview.setStyleSheet(
+            "QCheckBox {"
+            "  color: #e4eaf4; spacing: 8px;"
+            "  background: rgba(40, 52, 72, 220);"
+            "  padding: 6px 8px; border-radius: 4px;"
+            "  border: 1px solid rgba(80, 110, 150, 90);"
+            "}"
+            "QCheckBox:hover { background: rgba(50, 64, 88, 255); }"
+            "QCheckBox::indicator { width: 16px; height: 16px; }"
+        )
+        self._cb_lobby_preview.toggled.connect(self.lobbyPreviewToggled.emit)
+        r_layout.addWidget(self._cb_lobby_preview)
         roster_opacity_box, self._slider_roster_opacity, self._lbl_roster_opacity = self._build_opacity_slider(
             "roster",
             "Opacity (background + border)",
@@ -342,16 +356,20 @@ class MenuPanel(QWidget):
         vis_session: bool,
         vis_roster: bool,
         show_mmr: bool,
+        preview_lobby: bool,
     ) -> None:
         self._cb_session.blockSignals(True)
         self._cb_roster.blockSignals(True)
         self._cb_mmr.blockSignals(True)
+        self._cb_lobby_preview.blockSignals(True)
         self._cb_session.setChecked(vis_session)
         self._cb_roster.setChecked(vis_roster)
         self._cb_mmr.setChecked(show_mmr)
+        self._cb_lobby_preview.setChecked(preview_lobby)
         self._cb_session.blockSignals(False)
         self._cb_roster.blockSignals(False)
         self._cb_mmr.blockSignals(False)
+        self._cb_lobby_preview.blockSignals(False)
 
         sa = str(self._cfg.get("position_session_anchor") or "top-right").lower()
         ra = str(self._cfg.get("position_roster_anchor") or "top-left").lower()
@@ -377,8 +395,8 @@ class MenuPanel(QWidget):
     def _on_escape(self) -> None:
         self.close_menu()
 
-    def present(self, vis_session: bool, vis_roster: bool, show_mmr: bool) -> None:
-        self.sync_from_app(vis_session, vis_roster, show_mmr)
+    def present(self, vis_session: bool, vis_roster: bool, show_mmr: bool, preview_lobby: bool) -> None:
+        self.sync_from_app(vis_session, vis_roster, show_mmr, preview_lobby)
         self.show()
         self.raise_()
         self.activateWindow()
