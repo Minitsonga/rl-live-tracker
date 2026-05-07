@@ -79,6 +79,19 @@ class MenuPanel(QWidget):
         line.setStyleSheet("color: rgba(0,200,255,40); max-height: 1px;")
         root.addWidget(line)
 
+        self._btn_drag = QPushButton("Drag overlays: OFF")
+        self._btn_drag.setCursor(Qt.PointingHandCursor)
+        self._btn_drag.setStyleSheet(
+            "QPushButton {"
+            "  background: rgba(0, 120, 160, 120); color: #e8f8ff;"
+            "  border: 1px solid rgba(0, 200, 255, 80); border-radius: 4px;"
+            "  padding: 6px 10px; font-size: 10px;"
+            "}"
+            "QPushButton:hover { background: rgba(0, 140, 180, 160); }"
+        )
+        self._btn_drag.clicked.connect(self._on_drag_clicked)
+        root.addWidget(self._btn_drag)
+
         tabs = QTabWidget()
         tabs.setStyleSheet(
             "QTabWidget::pane { border: 1px solid rgba(80, 110, 150, 90); border-radius: 4px; top: -1px; }"
@@ -96,8 +109,8 @@ class MenuPanel(QWidget):
         sec_display.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         g_layout.addWidget(sec_display)
 
-        self._cb_session = QCheckBox("Session win/loss card")
-        self._cb_roster = QCheckBox("Lobby roster (ranks)")
+        self._cb_session = QCheckBox("Show match_summary")
+        self._cb_roster = QCheckBox("Show lobby_ranks")
         self._cb_mmr = QCheckBox("Show in-game MMR")
         for cb in (self._cb_session, self._cb_roster, self._cb_mmr):
             cb.setStyleSheet(
@@ -117,16 +130,6 @@ class MenuPanel(QWidget):
         g_layout.addWidget(self._cb_roster)
         g_layout.addWidget(self._cb_mmr)
 
-        sec_mmr = QLabel("Lobby MMR line")
-        sec_mmr.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
-        g_layout.addWidget(sec_mmr)
-        self._combo_roster_mmr = QComboBox()
-        for _pid, label in ROSTER_MMR_PRESET_OPTIONS:
-            self._combo_roster_mmr.addItem(label, _pid)
-        self._combo_roster_mmr.currentIndexChanged.connect(self._emit_roster_mmr_preset)
-        self._style_combo(self._combo_roster_mmr)
-        g_layout.addWidget(self._combo_roster_mmr)
-
         sec_theme = QLabel("Theme preset")
         sec_theme.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         g_layout.addWidget(sec_theme)
@@ -137,18 +140,6 @@ class MenuPanel(QWidget):
         self._style_combo(self._combo_theme)
         g_layout.addWidget(self._combo_theme)
 
-        self._btn_drag = QPushButton("Drag to reposition…")
-        self._btn_drag.setCursor(Qt.PointingHandCursor)
-        self._btn_drag.setStyleSheet(
-            "QPushButton {"
-            "  background: rgba(0, 120, 160, 120); color: #e8f8ff;"
-            "  border: 1px solid rgba(0, 200, 255, 80); border-radius: 4px;"
-            "  padding: 6px 10px; font-size: 10px;"
-            "}"
-            "QPushButton:hover { background: rgba(0, 140, 180, 160); }"
-        )
-        self._btn_drag.clicked.connect(self._on_drag_clicked)
-        g_layout.addWidget(self._btn_drag)
         g_layout.addStretch(1)
         tabs.addTab(tab_global, "Global settings")
 
@@ -156,7 +147,7 @@ class MenuPanel(QWidget):
         s_layout = QVBoxLayout(tab_session)
         s_layout.setContentsMargins(8, 8, 8, 8)
         s_layout.setSpacing(8)
-        sec_session = QLabel("Session overlay")
+        sec_session = QLabel("match_summary")
         sec_session.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         s_layout.addWidget(sec_session)
         self._session_group, sess_row = self._build_anchor_row("session")
@@ -167,15 +158,24 @@ class MenuPanel(QWidget):
         )
         s_layout.addWidget(session_opacity_box)
         s_layout.addStretch(1)
-        tabs.addTab(tab_session, "Session overlay")
+        tabs.addTab(tab_session, "match_summary")
 
         tab_roster = QWidget()
         r_layout = QVBoxLayout(tab_roster)
         r_layout.setContentsMargins(8, 8, 8, 8)
         r_layout.setSpacing(8)
-        sec_roster = QLabel("Lobby overlay")
+        sec_roster = QLabel("lobby_ranks")
         sec_roster.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         r_layout.addWidget(sec_roster)
+        sec_mmr = QLabel("Lobby MMR line")
+        sec_mmr.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        r_layout.addWidget(sec_mmr)
+        self._combo_roster_mmr = QComboBox()
+        for _pid, label in ROSTER_MMR_PRESET_OPTIONS:
+            self._combo_roster_mmr.addItem(label, _pid)
+        self._combo_roster_mmr.currentIndexChanged.connect(self._emit_roster_mmr_preset)
+        self._style_combo(self._combo_roster_mmr)
+        r_layout.addWidget(self._combo_roster_mmr)
         self._roster_group, rost_row = self._build_anchor_row("roster")
         r_layout.addLayout(rost_row)
         self._cb_lobby_preview = QCheckBox("Preview lobby overlay (outside match)")
@@ -197,7 +197,7 @@ class MenuPanel(QWidget):
         )
         r_layout.addWidget(roster_opacity_box)
         r_layout.addStretch(1)
-        tabs.addTab(tab_roster, "Lobby overlay")
+        tabs.addTab(tab_roster, "lobby_ranks")
 
         self.setStyleSheet(
             "MenuPanel {"
@@ -237,7 +237,7 @@ class MenuPanel(QWidget):
         row.addStretch(1)
 
         slider = QSlider(Qt.Horizontal)
-        slider.setMinimum(10)
+        slider.setMinimum(0)
         slider.setMaximum(100)
         slider.setSingleStep(1)
         slider.setPageStep(5)
@@ -330,8 +330,8 @@ class MenuPanel(QWidget):
     def _sync_opacity_sliders(self) -> None:
         s = int(self._cfg.get("session_overlay_opacity", 100) or 100)
         r = int(self._cfg.get("roster_overlay_opacity", 100) or 100)
-        s = max(10, min(100, s))
-        r = max(10, min(100, r))
+        s = max(0, min(100, s))
+        r = max(0, min(100, r))
         self._slider_session_opacity.blockSignals(True)
         self._slider_roster_opacity.blockSignals(True)
         self._slider_session_opacity.setValue(s)
@@ -385,33 +385,31 @@ class MenuPanel(QWidget):
     def _on_drag_clicked(self) -> None:
         if not self._drag_from_menu:
             self._drag_from_menu = True
-            self._btn_drag.setText("Finish dragging")
+            self._btn_drag.setText("Drag overlays: ON")
             self.dragRequested.emit()
         else:
             self._drag_from_menu = False
-            self._btn_drag.setText("Drag to reposition…")
+            self._btn_drag.setText("Drag overlays: OFF")
             self.dragFinished.emit()
+
+    def set_drag_toggle_state(self, enabled: bool) -> None:
+        self._drag_from_menu = bool(enabled)
+        self._btn_drag.setText("Drag overlays: ON" if self._drag_from_menu else "Drag overlays: OFF")
 
     def _on_escape(self) -> None:
         self.close_menu()
 
     def present(self, vis_session: bool, vis_roster: bool, show_mmr: bool, preview_lobby: bool) -> None:
         self.sync_from_app(vis_session, vis_roster, show_mmr, preview_lobby)
+        self._btn_drag.setText("Drag overlays: ON" if self._drag_from_menu else "Drag overlays: OFF")
         self.show()
         self.raise_()
         self.activateWindow()
         self._center_on_screen()
 
     def close_menu(self) -> None:
-        had_drag = self._drag_from_menu
-        if had_drag:
-            self._drag_from_menu = False
-            self._btn_drag.setText("Drag to reposition…")
         self.hide()
         self.menuClosed.emit()
-        # Après hide() : évite la réentrance si dragFinished déclenche _do_refresh → _sync (focus perdu).
-        if had_drag:
-            self.dragFinished.emit()
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
