@@ -221,6 +221,12 @@ def render_roster_html(
 
 
 def render_roster_preview_html(cfg: dict) -> str:
+    preset = roster_mmr_preset(cfg)
+    active_pl = "2v2"
+    if preset in ("mmr_only", "full_2v2_mmr"):
+        # Use a non-2v2 active playlist to preview the 2v2 secondary segment too.
+        active_pl = "1v1"
+
     roster = [
         {"key": "preview_blue_1", "name": "Blue One", "team": 0},
         {"key": "preview_blue_2", "name": "Blue Two", "team": 0},
@@ -228,9 +234,33 @@ def render_roster_preview_html(cfg: dict) -> str:
         {"key": "preview_orange_2", "name": "Orange Two", "team": 1},
     ]
     mmr_db = {
-        "preview_blue_1": {"playlists": {"2v2": {"mmr": 1310, "tier": "Champion 1", "division": "II"}}},
-        "preview_blue_2": {"playlists": {"2v2": {"mmr": 1242, "tier": "Diamond 3", "division": "III"}}},
-        "preview_orange_1": {"playlists": {"2v2": {"mmr": 1378, "tier": "Champion 2", "division": "I"}}},
-        "preview_orange_2": {"playlists": {"2v2": {"mmr": 1198, "tier": "Diamond 2", "division": "II"}}},
+        "preview_blue_1": {
+            "playlists": {
+                "1v1": {"mmr": 1154, "tier": "Diamond 1", "division": "III"},
+                "2v2": {"mmr": 1310, "tier": "Champion 1", "division": "II"},
+                "3v3": {"mmr": 1068, "tier": "Platinum 3", "division": "IV"},
+            }
+        },
+        "preview_blue_2": {
+            "playlists": {
+                "1v1": {"mmr": 1092, "tier": "Platinum 3", "division": "II"},
+                "2v2": {"mmr": 1242, "tier": "Diamond 3", "division": "III"},
+                "3v3": {"mmr": 1028, "tier": "Platinum 2", "division": "IV"},
+            }
+        },
+        "preview_orange_1": {
+            "playlists": {
+                "1v1": {"mmr": 1218, "tier": "Diamond 3", "division": "I"},
+                "2v2": {"mmr": 1378, "tier": "Champion 2", "division": "I"},
+                "3v3": {"mmr": 1136, "tier": "Diamond 1", "division": "I"},
+            }
+        },
+        "preview_orange_2": {
+            "playlists": {
+                "1v1": {"mmr": 1036, "tier": "Platinum 2", "division": "I"},
+                "2v2": {"mmr": 1198, "tier": "Diamond 2", "division": "II"},
+                "3v3": {"mmr": 987, "tier": "Platinum 1", "division": "IV"},
+            }
+        },
     }
-    return render_roster_html(cfg, roster, mmr_db, "2v2")
+    return render_roster_html(cfg, roster, mmr_db, active_pl)
