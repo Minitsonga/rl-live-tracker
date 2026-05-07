@@ -218,3 +218,19 @@ def render_roster_html(
         f"font-weight:700; letter-spacing:0.08em;'>{_esc(active_pl.upper())}</div>"
     )
     return head + block("BLUE", blue) + block("ORANGE", orange)
+
+
+def render_roster_preview_html(cfg: dict) -> str:
+    roster = [
+        {"key": "preview_blue_1", "name": "Blue One", "team": 0},
+        {"key": "preview_blue_2", "name": "Blue Two", "team": 0},
+        {"key": "preview_orange_1", "name": "Orange One", "team": 1},
+        {"key": "preview_orange_2", "name": "Orange Two", "team": 1},
+    ]
+    mmr_db = {
+        "preview_blue_1": {"playlists": {"2v2": {"mmr": 1310, "tier": "Champion 1", "division": "II"}}},
+        "preview_blue_2": {"playlists": {"2v2": {"mmr": 1242, "tier": "Diamond 3", "division": "III"}}},
+        "preview_orange_1": {"playlists": {"2v2": {"mmr": 1378, "tier": "Champion 2", "division": "I"}}},
+        "preview_orange_2": {"playlists": {"2v2": {"mmr": 1198, "tier": "Diamond 2", "division": "II"}}},
+    }
+    return render_roster_html(cfg, roster, mmr_db, "2v2")
