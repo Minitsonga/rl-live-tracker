@@ -28,6 +28,15 @@ cd rl-live-tracker
 python -m pip install -r requirements.txt
 ```
 
+## Dev quality checks
+
+```powershell
+python -m pip install pre-commit pytest ruff
+pre-commit install
+pre-commit run --all-files
+$env:PYTHONPATH = "$PWD\src"; pytest -q
+```
+
 ## Run
 
 ```powershell
