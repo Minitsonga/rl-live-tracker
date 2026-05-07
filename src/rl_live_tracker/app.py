@@ -693,7 +693,11 @@ class AppController(QObject):
         return out
 
     def _do_refresh(self) -> None:
-        html_sess = render_session_html(self.cfg, self.session)
+        html_sess = render_session_html(
+            self.cfg,
+            self.session,
+            in_match=bool(self.state.get("in_match")),
+        )
         self.overlay_session.set_html(html_sess)
 
         roster = self.state["roster"]

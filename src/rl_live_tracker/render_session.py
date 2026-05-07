@@ -38,7 +38,20 @@ def _esc(s: str) -> str:
     )
 
 
-def render_session_html(cfg: dict, session: "SessionState") -> str:
+def _playlist_label(playlist: str, in_match: bool) -> str:
+    p = (playlist or "").strip().lower()
+    mapping = {
+        "1v1": "1v1",
+        "2v2": "2v2",
+        "3v3": "3v3",
+        "other": "Other",
+    }
+    if not in_match:
+        return "Menu"
+    return mapping.get(p, "Other")
+
+
+def render_session_html(cfg: dict, session: "SessionState", in_match: bool = False) -> str:
     ac = cfg.get("accent_color", "#00c8ff")
     tc = cfg.get("text_color", "#f4f7fc")
     lc_label = cfg.get("label_color", "#d4e2f4")
@@ -46,10 +59,17 @@ def render_session_html(cfg: dict, session: "SessionState") -> str:
     lc = cfg.get("loss_color", "#ff4060")
     mc = cfg.get("muted_color", "#b8c6d9")
 
-    conn = "OK" if session.stats_connected else "…"
-    conn_color = wc if session.stats_connected else mc
-
     pl = session.active_playlist
+    pl_label = _playlist_label(pl, in_match)
+    if session.stats_connected:
+        status_txt = "Connected"
+        status_color = wc
+    elif in_match:
+        status_txt = "Reconnecting"
+        status_color = "#ffb347"
+    else:
+        status_txt = "Offline"
+        status_color = lc
     show_mmr = bool(cfg.get("show_mmr_ingame", True))
     if not show_mmr:
         mmr_txt = "—"
@@ -110,9 +130,15 @@ def render_session_html(cfg: dict, session: "SessionState") -> str:
     )
 
     row_top = (
-        f"<span style='font-size:9pt; color:{lc_label}; font-weight:700;'>API</span>"
-        f"{_NB}<span style='font-size:9pt; color:{conn_color}; font-weight:700;'>{conn}</span>"
-        f"{_NB}<span style='font-size:9pt; color:{ac}; font-weight:700;'>{_esc(pl.upper())}</span>"
+        f"""<table border="0" cellspacing="0" cellpadding="0" width="100%" style="margin:0;"><tr>
+<td style="vertical-align:middle; white-space:nowrap;">
+<span style='font-size:9pt; color:{ac}; font-weight:700;'>{_esc(pl_label)}</span>
+</td>
+<td align="right" style="vertical-align:middle; white-space:nowrap; padding-left:8pt;">
+<span style='font-size:9pt; color:{lc_label}; font-weight:700;'>Status:</span>{_NB}
+<span style='font-size:9pt; color:{status_color}; font-weight:700;'>{status_txt}</span>
+</td>
+</tr></table>"""
     )
 
     return f"""<table border="0" cellspacing="0" cellpadding="0" width="100%"
