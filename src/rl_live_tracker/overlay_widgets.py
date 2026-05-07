@@ -107,14 +107,47 @@ class TransparentOverlay(QWidget):
         self._label.setTextFormat(Qt.RichText)
         self._label.setWordWrap(word_wrap)
 
-        bg_rgba = ",".join(str(v) for v in cfg.get("background_rgba") or [10, 12, 16, 110])
-        border_rgba = ",".join(str(v) for v in cfg.get("border_rgba") or [0, 200, 255, 45])
-        radius = int(cfg.get("border_radius_px", 6))
-        tc = cfg.get("text_color", "#e4eaf4")
-        ff = cfg.get("font_family", "Segoe UI")
-        fs = int(body_font_pt) if body_font_pt is not None else int(cfg.get("font_size", 10))
+        self._body_font_pt = body_font_pt
+        self._apply_style_from_cfg()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._label)
+
+        self._label.setText("")
+        self.resize(72, 48)
+        self.hide()
+
+    def _opacity_key(self) -> str:
+        return "session_overlay_opacity" if self._position_key == "position_session" else "roster_overlay_opacity"
+
+    @staticmethod
+    def _rgba_with_overlay_opacity(rgba: object, percent: int, fallback: list[int]) -> str:
+        src = rgba if isinstance(rgba, (list, tuple)) else fallback
+        vals = [int(src[i]) if i < len(src) else fallback[i] for i in range(4)]
+        vals[3] = max(0, min(255, int(round(vals[3] * (percent / 100.0)))))
+        return ",".join(str(v) for v in vals)
+
+    def _apply_style_from_cfg(self) -> None:
+        op = self.cfg.get(self._opacity_key(), 100)
+        try:
+            percent = int(op)
+        except (TypeError, ValueError):
+            percent = 100
+        percent = max(10, min(100, percent))
+        bg_rgba = self._rgba_with_overlay_opacity(
+            self.cfg.get("background_rgba"), percent, [10, 12, 16, 110]
+        )
+        border_rgba = self._rgba_with_overlay_opacity(
+            self.cfg.get("border_rgba"), percent, [0, 200, 255, 45]
+        )
+        radius = int(self.cfg.get("border_radius_px", 6))
+        tc = self.cfg.get("text_color", "#e4eaf4")
+        ff = self.cfg.get("font_family", "Segoe UI")
+        fs = int(self._body_font_pt) if self._body_font_pt is not None else int(
+            self.cfg.get("font_size", 10)
+        )
         self._label.setFont(QFont(ff, fs))
-        pad = cfg.get("overlay_padding_px") or [8, 10]
+        pad = self.cfg.get("overlay_padding_px") or [8, 10]
         py, px = (int(pad[0]), int(pad[1])) if len(pad) >= 2 else (8, 10)
         self._label.setStyleSheet(
             "QLabel {"
@@ -125,13 +158,6 @@ class TransparentOverlay(QWidget):
             f"  padding: {py}px {px}px;"
             "}"
         )
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._label)
-
-        self._label.setText("")
-        self.resize(72, 48)
-        self.hide()
 
     def anchor_key(self) -> str:
         return self._anchor_key
@@ -178,6 +204,7 @@ class TransparentOverlay(QWidget):
         )
 
     def set_html(self, html: str) -> None:
+        self._apply_style_from_cfg()
         screen_obj = resolve_overlay_screen(self.cfg)
         anchor = self._resolved_anchor()
         cx: int | None = None

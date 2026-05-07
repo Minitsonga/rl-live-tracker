@@ -1,4 +1,4 @@
-"""F5 settings panel: visibility, corner anchors + custom, mouse drag mode."""
+"""F5 settings panel: visibility, anchors, themes and per-overlay opacity."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
@@ -12,10 +12,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from .config import THEME_PRESETS
 from .overlay_widgets import CORNER_ANCHORS, resolve_overlay_screen
 from .render_roster import ROSTER_MMR_PRESET_OPTIONS
 
@@ -35,6 +38,8 @@ class MenuPanel(QWidget):
     toggleRoster = Signal(bool)
     toggleMmr = Signal(bool)
     rosterMmrPresetChanged = Signal(str)
+    themePresetChanged = Signal(str)
+    overlayOpacityChanged = Signal(str, int)  # which: "session"|"roster"
     anchorChanged = Signal(str, str)  # "session"|"roster", anchor id
     dragRequested = Signal()
     dragFinished = Signal()
@@ -73,9 +78,22 @@ class MenuPanel(QWidget):
         line.setStyleSheet("color: rgba(0,200,255,40); max-height: 1px;")
         root.addWidget(line)
 
-        sec1 = QLabel("Display")
-        sec1.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
-        root.addWidget(sec1)
+        tabs = QTabWidget()
+        tabs.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid rgba(80, 110, 150, 90); border-radius: 4px; top: -1px; }"
+            "QTabBar::tab { background: rgba(40, 52, 72, 220); color: #c8d8ec; padding: 6px 10px; margin-right: 3px; border-radius: 3px; }"
+            "QTabBar::tab:selected { background: rgba(0, 100, 140, 200); color: #ffffff; }"
+        )
+        root.addWidget(tabs)
+
+        tab_global = QWidget()
+        g_layout = QVBoxLayout(tab_global)
+        g_layout.setContentsMargins(8, 8, 8, 8)
+        g_layout.setSpacing(8)
+
+        sec_display = QLabel("Display")
+        sec_display.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        g_layout.addWidget(sec_display)
 
         self._cb_session = QCheckBox("Session win/loss card")
         self._cb_roster = QCheckBox("Lobby roster (ranks)")
@@ -94,45 +112,29 @@ class MenuPanel(QWidget):
         self._cb_session.toggled.connect(self.toggleSession.emit)
         self._cb_roster.toggled.connect(self.toggleRoster.emit)
         self._cb_mmr.toggled.connect(self.toggleMmr.emit)
-        root.addWidget(self._cb_session)
-        root.addWidget(self._cb_roster)
-        root.addWidget(self._cb_mmr)
+        g_layout.addWidget(self._cb_session)
+        g_layout.addWidget(self._cb_roster)
+        g_layout.addWidget(self._cb_mmr)
 
         sec_mmr = QLabel("Lobby MMR line")
-        sec_mmr.setStyleSheet(
-            "color: #b8d4f0; font-size: 9px; font-weight: bold; margin-top: 4px; background: transparent;"
-        )
-        root.addWidget(sec_mmr)
+        sec_mmr.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        g_layout.addWidget(sec_mmr)
         self._combo_roster_mmr = QComboBox()
-        self._combo_roster_mmr.blockSignals(True)
         for _pid, label in ROSTER_MMR_PRESET_OPTIONS:
             self._combo_roster_mmr.addItem(label, _pid)
-        self._combo_roster_mmr.blockSignals(False)
-        self._combo_roster_mmr.setStyleSheet(
-            "QComboBox {"
-            "  background: rgba(40, 52, 72, 220); color: #e4eaf4;"
-            "  border: 1px solid rgba(80, 110, 150, 90); border-radius: 4px;"
-            "  padding: 5px 8px; font-size: 10px; min-height: 22px;"
-            "}"
-            "QComboBox::drop-down { border: none; width: 18px; }"
-            "QComboBox QAbstractItemView {"
-            "  background: rgb(32, 42, 58); color: #e4eaf4; selection-background-color: rgba(0, 100, 140, 200);"
-            "}"
-        )
         self._combo_roster_mmr.currentIndexChanged.connect(self._emit_roster_mmr_preset)
-        root.addWidget(self._combo_roster_mmr)
+        self._style_combo(self._combo_roster_mmr)
+        g_layout.addWidget(self._combo_roster_mmr)
 
-        sec2 = QLabel("Position — session")
-        sec2.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; margin-top: 4px; background: transparent;")
-        root.addWidget(sec2)
-        self._session_group, sess_row = self._build_anchor_row("session")
-        root.addLayout(sess_row)
-
-        sec3 = QLabel("Position — roster")
-        sec3.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; margin-top: 4px; background: transparent;")
-        root.addWidget(sec3)
-        self._roster_group, rost_row = self._build_anchor_row("roster")
-        root.addLayout(rost_row)
+        sec_theme = QLabel("Theme preset")
+        sec_theme.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        g_layout.addWidget(sec_theme)
+        self._combo_theme = QComboBox()
+        for pid, payload in THEME_PRESETS.items():
+            self._combo_theme.addItem(str(payload.get("label") or pid), pid)
+        self._combo_theme.currentIndexChanged.connect(self._emit_theme_preset)
+        self._style_combo(self._combo_theme)
+        g_layout.addWidget(self._combo_theme)
 
         self._btn_drag = QPushButton("Drag to reposition…")
         self._btn_drag.setCursor(Qt.PointingHandCursor)
@@ -145,7 +147,43 @@ class MenuPanel(QWidget):
             "QPushButton:hover { background: rgba(0, 140, 180, 160); }"
         )
         self._btn_drag.clicked.connect(self._on_drag_clicked)
-        root.addWidget(self._btn_drag)
+        g_layout.addWidget(self._btn_drag)
+        g_layout.addStretch(1)
+        tabs.addTab(tab_global, "Global settings")
+
+        tab_session = QWidget()
+        s_layout = QVBoxLayout(tab_session)
+        s_layout.setContentsMargins(8, 8, 8, 8)
+        s_layout.setSpacing(8)
+        sec_session = QLabel("Session overlay")
+        sec_session.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        s_layout.addWidget(sec_session)
+        self._session_group, sess_row = self._build_anchor_row("session")
+        s_layout.addLayout(sess_row)
+        session_opacity_box, self._slider_session_opacity, self._lbl_session_opacity = self._build_opacity_slider(
+            "session",
+            "Opacity (background + border)",
+        )
+        s_layout.addWidget(session_opacity_box)
+        s_layout.addStretch(1)
+        tabs.addTab(tab_session, "Session overlay")
+
+        tab_roster = QWidget()
+        r_layout = QVBoxLayout(tab_roster)
+        r_layout.setContentsMargins(8, 8, 8, 8)
+        r_layout.setSpacing(8)
+        sec_roster = QLabel("Lobby overlay")
+        sec_roster.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        r_layout.addWidget(sec_roster)
+        self._roster_group, rost_row = self._build_anchor_row("roster")
+        r_layout.addLayout(rost_row)
+        roster_opacity_box, self._slider_roster_opacity, self._lbl_roster_opacity = self._build_opacity_slider(
+            "roster",
+            "Opacity (background + border)",
+        )
+        r_layout.addWidget(roster_opacity_box)
+        r_layout.addStretch(1)
+        tabs.addTab(tab_roster, "Lobby overlay")
 
         self.setStyleSheet(
             "MenuPanel {"
@@ -159,6 +197,49 @@ class MenuPanel(QWidget):
         sc.activated.connect(self._on_escape)
 
         self.adjustSize()
+
+    def _style_combo(self, combo: QComboBox) -> None:
+        combo.setStyleSheet(
+            "QComboBox {"
+            "  background: rgba(40, 52, 72, 220); color: #e4eaf4;"
+            "  border: 1px solid rgba(80, 110, 150, 90); border-radius: 4px;"
+            "  padding: 5px 8px; font-size: 10px; min-height: 22px;"
+            "}"
+            "QComboBox::drop-down { border: none; width: 18px; }"
+            "QComboBox QAbstractItemView {"
+            "  background: rgb(32, 42, 58); color: #e4eaf4; selection-background-color: rgba(0, 100, 140, 200);"
+            "}"
+        )
+
+    def _build_opacity_slider(self, which: str, title: str) -> tuple[QWidget, QSlider, QLabel]:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        lbl = QLabel(title)
+        lbl.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        row.addWidget(lbl)
+        val = QLabel("100%")
+        val.setStyleSheet("color: #e4eaf4; font-size: 9px; background: transparent;")
+        row.addWidget(val)
+        row.addStretch(1)
+
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(10)
+        slider.setMaximum(100)
+        slider.setSingleStep(1)
+        slider.setPageStep(5)
+        slider.setStyleSheet(
+            "QSlider::groove:horizontal { height: 6px; background: rgba(60,80,110,120); border-radius: 3px; }"
+            "QSlider::handle:horizontal { width: 12px; margin: -4px 0; background: rgba(0,200,255,200); border-radius: 6px; }"
+        )
+        slider.valueChanged.connect(lambda v, w=which, vlab=val: self._on_opacity_changed(w, int(v), vlab))
+
+        wrap = QVBoxLayout()
+        wrap.setSpacing(4)
+        wrap.addLayout(row)
+        wrap.addWidget(slider)
+        container = QWidget()
+        container.setLayout(wrap)
+        return container, slider, val
 
     def _build_anchor_row(self, which: str) -> tuple[QButtonGroup, QHBoxLayout]:
         row = QHBoxLayout()
@@ -197,6 +278,15 @@ class MenuPanel(QWidget):
         if pid:
             self.rosterMmrPresetChanged.emit(str(pid))
 
+    def _emit_theme_preset(self, _index: int) -> None:
+        pid = self._combo_theme.currentData()
+        if pid:
+            self.themePresetChanged.emit(str(pid))
+
+    def _on_opacity_changed(self, which: str, value: int, label: QLabel) -> None:
+        label.setText(f"{int(value)}%")
+        self.overlayOpacityChanged.emit(which, int(value))
+
     def _sync_roster_mmr_combo(self) -> None:
         preset = str(self._cfg.get("roster_mmr_preset") or "full").strip().lower()
         self._combo_roster_mmr.blockSignals(True)
@@ -209,6 +299,33 @@ class MenuPanel(QWidget):
                 self._combo_roster_mmr.setCurrentIndex(0)
         finally:
             self._combo_roster_mmr.blockSignals(False)
+
+    def _sync_theme_combo(self) -> None:
+        preset = str(self._cfg.get("theme_preset") or "classic").strip().lower()
+        self._combo_theme.blockSignals(True)
+        try:
+            for i in range(self._combo_theme.count()):
+                if str(self._combo_theme.itemData(i)) == preset:
+                    self._combo_theme.setCurrentIndex(i)
+                    break
+            else:
+                self._combo_theme.setCurrentIndex(0)
+        finally:
+            self._combo_theme.blockSignals(False)
+
+    def _sync_opacity_sliders(self) -> None:
+        s = int(self._cfg.get("session_overlay_opacity", 100) or 100)
+        r = int(self._cfg.get("roster_overlay_opacity", 100) or 100)
+        s = max(10, min(100, s))
+        r = max(10, min(100, r))
+        self._slider_session_opacity.blockSignals(True)
+        self._slider_roster_opacity.blockSignals(True)
+        self._slider_session_opacity.setValue(s)
+        self._slider_roster_opacity.setValue(r)
+        self._slider_session_opacity.blockSignals(False)
+        self._slider_roster_opacity.blockSignals(False)
+        self._lbl_session_opacity.setText(f"{s}%")
+        self._lbl_roster_opacity.setText(f"{r}%")
 
     def _sync_anchor_group(self, group: QButtonGroup, anchor: str) -> None:
         group.blockSignals(True)
@@ -241,6 +358,8 @@ class MenuPanel(QWidget):
         self._sync_anchor_group(self._session_group, sa)
         self._sync_anchor_group(self._roster_group, ra)
         self._sync_roster_mmr_combo()
+        self._sync_theme_combo()
+        self._sync_opacity_sliders()
 
     def is_drag_from_menu_active(self) -> bool:
         return self._drag_from_menu
