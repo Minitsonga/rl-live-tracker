@@ -133,7 +133,10 @@ class TransparentOverlay(QWidget):
             percent = int(op)
         except (TypeError, ValueError):
             percent = 100
-        percent = max(10, min(100, percent))
+        percent = max(0, min(100, percent))
+        if self._drag_enabled:
+            # Drag mode: use default full opacity for better placement visibility.
+            percent = 100
         bg_rgba = self._rgba_with_overlay_opacity(
             self.cfg.get("background_rgba"), percent, [10, 12, 16, 110]
         )
@@ -214,34 +217,17 @@ class TransparentOverlay(QWidget):
             cx, cy = int(raw_xy[0]), int(raw_xy[1])  # type: ignore[index]
             self.move(cx, cy)
 
-        old_geo = self.frameGeometry()
         self._apply_html_and_layout(html)
 
         if screen_obj is None:
             self._resize_pivot = None
             return
 
-        nw, nh = self.width(), self.height()
-        screen_rect = screen_obj.availableGeometry()
-
         if anchor == "custom" and cx is not None and cy is not None:
-            hyp_final = QRect(cx, cy, nw, nh)
-            if self._resize_pivot is None:
-                self._resize_pivot = _infer_homologous_screen_pivot(hyp_final, screen_rect)
-
-            pivot = self._resize_pivot
-            if (
-                old_geo.width() <= 96
-                and old_geo.height() <= 96
-                and nw > old_geo.width()
-                and nh > old_geo.height()
-            ):
-                self.move(cx, cy)
-                self.cfg[self._custom_pos_key] = [cx, cy]
-            else:
-                nx, ny = _new_topleft_keeping_corner(old_geo, pivot, nw, nh)
-                self.move(nx, ny)
-                self.cfg[self._custom_pos_key] = [int(nx), int(ny)]
+            # Custom placement must remain pixel-stable across restarts and content resizes.
+            self.move(cx, cy)
+            self.cfg[self._custom_pos_key] = [cx, cy]
+            self._resize_pivot = None
         else:
             self._resize_pivot = None
             self._reposition()

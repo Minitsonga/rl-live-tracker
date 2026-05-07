@@ -151,6 +151,8 @@ class AppController(QObject):
             "width_roster",
             "position_roster",
         )
+        self.overlay_session.positionCommitted.connect(lambda: self._on_overlay_position_committed("session"))
+        self.overlay_roster.positionCommitted.connect(lambda: self._on_overlay_position_committed("roster"))
 
         self._menu = MenuPanel(self.cfg)
         self._wire_menu_signals()
@@ -415,13 +417,31 @@ class AppController(QObject):
 
     def _on_menu_overlay_opacity(self, which: str, value: int) -> None:
         key = "session_overlay_opacity" if which == "session" else "roster_overlay_opacity"
-        self.cfg[key] = max(10, min(100, int(value)))
+        self.cfg[key] = max(0, min(100, int(value)))
         save_config(self.cfg)
         self._do_refresh()
 
     def _on_menu_lobby_preview_toggled(self, checked: bool) -> None:
         self._lobby_preview_enabled = bool(checked)
         self._do_refresh()
+
+    def _on_overlay_position_committed(self, which: str) -> None:
+        if which == "session":
+            x, y = self.overlay_session.current_pos()
+            self.cfg["position_session_custom_xy"] = [x, y]
+            self.cfg["position_session_anchor"] = "custom"
+        else:
+            x, y = self.overlay_roster.current_pos()
+            self.cfg["position_roster_custom_xy"] = [x, y]
+            self.cfg["position_roster_anchor"] = "custom"
+        save_config(self.cfg)
+        if self._menu.isVisible():
+            self._menu.sync_from_app(
+                self._visibility["session"],
+                self._visibility["roster"],
+                bool(self.cfg.get("show_mmr_ingame", True)),
+                self._lobby_preview_enabled,
+            )
 
     def _on_menu_drag_requested(self) -> None:
         self._set_drag_mode(True)
@@ -463,6 +483,10 @@ class AppController(QObject):
             self._act_mmr_ingame.blockSignals(True)
             self._act_mmr_ingame.setChecked(bool(self.cfg.get("show_mmr_ingame", True)))
             self._act_mmr_ingame.blockSignals(False)
+        if hasattr(self, "_act_drag") and self._act_drag is not None:
+            self._act_drag.blockSignals(True)
+            self._act_drag.setChecked(bool(self._drag_mode))
+            self._act_drag.blockSignals(False)
 
     def _on_stats_conn(self, ok: bool) -> None:
         self.session.stats_connected = ok
@@ -742,6 +766,7 @@ class AppController(QObject):
 
     def _set_drag_mode(self, enabled: bool) -> None:
         self._drag_mode = bool(enabled)
+        self._menu.set_drag_toggle_state(self._drag_mode)
         self.overlay_session.set_drag_enabled(self._drag_mode)
         self.overlay_roster.set_drag_enabled(self._drag_mode)
         if self._drag_mode:
@@ -749,6 +774,10 @@ class AppController(QObject):
             self.overlay_roster.show()
             self.overlay_session.raise_()
             self.overlay_roster.raise_()
+        if hasattr(self, "_act_drag") and self._act_drag is not None:
+            self._act_drag.blockSignals(True)
+            self._act_drag.setChecked(self._drag_mode)
+            self._act_drag.blockSignals(False)
 
     def _persist_custom_positions_if_needed(self) -> None:
         if str(self.cfg.get("position_session_anchor", "")).lower() == "custom":
@@ -830,7 +859,7 @@ class AppController(QObject):
 
         act_settings.triggered.connect(_open_settings)
 
-        act_sess = QAction("Show session card", menu)
+        act_sess = QAction("Show match_summary", menu)
         act_sess.setCheckable(True)
         act_sess.setChecked(self._visibility["session"])
 
@@ -842,7 +871,7 @@ class AppController(QObject):
 
         act_sess.toggled.connect(_sync_sess)
 
-        act_roster = QAction("Show lobby roster", menu)
+        act_roster = QAction("Show lobby_ranks", menu)
         act_roster.setCheckable(True)
         act_roster.setChecked(self._visibility["roster"])
 
@@ -875,6 +904,15 @@ class AppController(QObject):
             self._do_refresh()
 
         act_mmr_ingame.toggled.connect(_mmr_ingame_tog)
+
+        act_drag = QAction("Drag overlays (global)", menu)
+        act_drag.setCheckable(True)
+        act_drag.setChecked(False)
+
+        def _drag_tog(checked: bool) -> None:
+            self._set_drag_mode(bool(checked))
+
+        act_drag.toggled.connect(_drag_tog)
 
         act_reset = QAction("Reset session counters", menu)
 
@@ -909,6 +947,7 @@ class AppController(QObject):
         menu.addSeparator()
         menu.addAction(act_mmr)
         menu.addAction(act_mmr_ingame)
+        menu.addAction(act_drag)
         menu.addSeparator()
         menu.addAction(act_reset)
         menu.addAction(act_folder)
@@ -923,6 +962,7 @@ class AppController(QObject):
         self._act_roster = act_roster
         self._act_mmr_tracker = act_mmr
         self._act_mmr_ingame = act_mmr_ingame
+        self._act_drag = act_drag
 
     def run(self) -> int:
         rc = self.app.exec()
