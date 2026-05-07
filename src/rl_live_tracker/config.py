@@ -8,10 +8,13 @@ from .applog import warn_log
 from .paths import CONFIG_PATH, safe_atomic_write_text
 
 THEME_PRESETS: dict[str, dict] = {
-    "classic": {
-        "label": "Classic",
-        "background_rgba": [6, 8, 12, 68],
-        "border_rgba": [0, 200, 255, 28],
+    "pro_classic": {
+        "label": "Pro Classic",
+        "background_rgba": [8, 12, 18, 86],
+        "border_rgba": [0, 170, 255, 56],
+        "border_radius_px": 4,
+        "overlay_padding_px": [4, 6],
+        "font_size": 10,
         "text_color": "#f4f7fc",
         "label_color": "#d4e2f4",
         "accent_color": "#00c8ff",
@@ -19,38 +22,48 @@ THEME_PRESETS: dict[str, dict] = {
         "loss_color": "#ff4060",
         "muted_color": "#b8c6d9",
     },
-    "rocketstats_dark": {
-        "label": "RocketStats Dark",
-        "background_rgba": [8, 11, 16, 92],
-        "border_rgba": [48, 134, 255, 58],
-        "text_color": "#edf4ff",
-        "label_color": "#c8d7ef",
-        "accent_color": "#38b6ff",
-        "win_color": "#22e29f",
-        "loss_color": "#ff617a",
-        "muted_color": "#9eb1ca",
+    "glass_minimal": {
+        "label": "Glass Minimal",
+        "background_rgba": [16, 20, 30, 54],
+        "border_rgba": [220, 230, 255, 18],
+        "border_radius_px": 10,
+        "overlay_padding_px": [6, 10],
+        "font_size": 9,
+        "text_color": "#f5f8ff",
+        "label_color": "#d6dff2",
+        "accent_color": "#9bc6ff",
+        "win_color": "#66e4b5",
+        "loss_color": "#ff7b8f",
+        "muted_color": "#a6b2c8",
     },
-    "neon_cyan": {
-        "label": "Neon Cyan",
-        "background_rgba": [4, 10, 15, 90],
-        "border_rgba": [0, 229, 255, 72],
-        "text_color": "#e8f7ff",
-        "label_color": "#b7ddef",
-        "accent_color": "#00e5ff",
-        "win_color": "#00f5b0",
-        "loss_color": "#ff4b7d",
-        "muted_color": "#9fc2d4",
+    "esports_hud": {
+        "label": "Esports HUD",
+        "background_rgba": [5, 9, 14, 116],
+        "border_rgba": [0, 250, 255, 90],
+        "border_radius_px": 2,
+        "overlay_padding_px": [3, 5],
+        "font_size": 11,
+        "text_color": "#e8fcff",
+        "label_color": "#bdeeff",
+        "accent_color": "#00f6ff",
+        "win_color": "#09f0aa",
+        "loss_color": "#ff4f73",
+        "muted_color": "#98b7ca",
     },
-    "stealth_gray": {
-        "label": "Stealth Gray",
-        "background_rgba": [12, 14, 18, 84],
-        "border_rgba": [118, 128, 146, 42],
-        "text_color": "#edf0f6",
-        "label_color": "#c9ceda",
-        "accent_color": "#9fb8ff",
-        "win_color": "#48d89f",
-        "loss_color": "#ff6a78",
-        "muted_color": "#a7afbf",
+    "mono_terminal": {
+        "label": "Mono Terminal",
+        "background_rgba": [12, 18, 12, 120],
+        "border_rgba": [138, 255, 138, 55],
+        "border_radius_px": 0,
+        "overlay_padding_px": [3, 5],
+        "font_size": 10,
+        "font_family": "Consolas",
+        "text_color": "#dcffdc",
+        "label_color": "#bdf0bd",
+        "accent_color": "#9aff9a",
+        "win_color": "#7dff9c",
+        "loss_color": "#ff8f9e",
+        "muted_color": "#9ec49e",
     },
 }
 
@@ -77,7 +90,7 @@ DEFAULT_CONFIG = {
     "roster_mmr_preset": "full",
     "show_session_overlay": True,
     "show_roster_overlay": False,
-    "theme_preset": "classic",
+    "theme_preset": "pro_classic",
     "session_overlay_opacity": 100,
     "roster_overlay_opacity": 100,
     # Ancres : top-left | top-right | bottom-left | bottom-right | custom
@@ -121,6 +134,10 @@ def apply_theme_preset(cfg: dict, preset: str) -> bool:
     for key in (
         "background_rgba",
         "border_rgba",
+        "border_radius_px",
+        "overlay_padding_px",
+        "font_size",
+        "font_family",
         "text_color",
         "label_color",
         "accent_color",
@@ -179,7 +196,7 @@ def _migrate_loaded(cfg: dict, loaded: Optional[dict]) -> bool:
         cfg["menu_toggle_hotkeys"] = ["f5"]
         changed = True
     if "theme_preset" not in loaded:
-        cfg["theme_preset"] = "classic"
+        cfg["theme_preset"] = "pro_classic"
         changed = True
     # clamp per-overlay opacity sliders
     for k in ("session_overlay_opacity", "roster_overlay_opacity"):
@@ -188,7 +205,7 @@ def _migrate_loaded(cfg: dict, loaded: Optional[dict]) -> bool:
             v = int(raw)
         except (TypeError, ValueError):
             v = 100
-        vv = max(10, min(100, v))
+        vv = max(0, min(100, v))
         if raw != vv:
             cfg[k] = vv
             changed = True
@@ -213,11 +230,15 @@ def load_config() -> dict:
     if _migrate_loaded(cfg, loaded):
         needs_rewrite = True
     # Keep visual tokens aligned with selected preset.
-    if apply_theme_preset(cfg, str(cfg.get("theme_preset") or "classic")):
+    if apply_theme_preset(cfg, str(cfg.get("theme_preset") or "pro_classic")):
         if loaded is not None:
             for key in (
                 "background_rgba",
                 "border_rgba",
+                "border_radius_px",
+                "overlay_padding_px",
+                "font_size",
+                "font_family",
                 "text_color",
                 "label_color",
                 "accent_color",
