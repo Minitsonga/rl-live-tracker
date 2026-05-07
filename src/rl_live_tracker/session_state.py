@@ -34,6 +34,7 @@ class SessionState:
         self.active_playlist: str = "other"
         self._by_pl: dict[str, PlaylistSession] = {}
         self._mmr_at_match_start: Optional[int] = None
+        self._mmr_baseline_reliable: bool = False
         self.current_mmr: Optional[int] = None
         # Dernier delta TRN appliqué (carte session), indépendant du mode affiché / lobby suivant.
         self.last_completed_mmr_delta: Optional[int] = None
@@ -73,6 +74,7 @@ class SessionState:
     def reset_counters(self) -> None:
         self._by_pl.clear()
         self._mmr_at_match_start = None
+        self._mmr_baseline_reliable = False
         self.current_mmr = None
         self.last_completed_mmr_delta = None
         self.mmr_session_start.clear()
@@ -119,10 +121,12 @@ class SessionState:
         n = len(roster)
         self.active_playlist = playlist_from_player_count(n)
         self._mmr_at_match_start = None
+        self._mmr_baseline_reliable = False
         if self.active_playlist in RANKED_PLAYLISTS:
             m = mmr_for_playlist(self_entry, self.active_playlist)
             if m is not None:
                 self._mmr_at_match_start = m
+                self._mmr_baseline_reliable = True
                 self.current_mmr = m
                 self.record_session_start_mmr_if_needed(self.active_playlist, m)
 
@@ -134,17 +138,22 @@ class SessionState:
         m = mmr_for_playlist(self_entry, playlist)
         if m is not None:
             self._mmr_at_match_start = m
+            self._mmr_baseline_reliable = True
             self.current_mmr = m
             self.record_session_start_mmr_if_needed(playlist, m)
 
-    def freeze_baseline_at_match_end(self, playlist: str, self_entry: Optional[dict]) -> Optional[int]:
+    def freeze_baseline_at_match_end(
+        self, playlist: str, self_entry: Optional[dict]
+    ) -> tuple[Optional[int], bool]:
         if playlist not in RANKED_PLAYLISTS:
-            return None
+            return None, False
+        reliable = self._mmr_baseline_reliable
         if self._mmr_at_match_start is None:
             m = mmr_for_playlist(self_entry, playlist)
             if m is not None:
                 self._mmr_at_match_start = m
-        return self._mmr_at_match_start
+                reliable = False
+        return self._mmr_at_match_start, reliable
 
     def on_match_ended_outcome(self, won: bool) -> None:
         st = self._pl(self.active_playlist)
@@ -162,6 +171,7 @@ class SessionState:
         self_entry: Optional[dict],
         playlist: str,
         frozen_match_start_mmr: Optional[int],
+        baseline_reliable: bool = True,
     ) -> Optional[int]:
         """Applique le delta MMR. `frozen_match_start_mmr` est capturé à la fin du match
         (voir post_pending baseline_mmr) — ne jamais relire _mmr_at_match_start ici (courses async)."""
@@ -173,7 +183,9 @@ class SessionState:
             d = int(new_mmr) - int(old)
             st.last_match_delta = d
             st.mmr_delta_session += d
-            self.last_completed_mmr_delta = d
+            # If start baseline was reconstructed at match end (missing match init/load),
+            # d can include multiple matches; keep it for session total, but don't show it as "Last".
+            self.last_completed_mmr_delta = d if baseline_reliable else None
             self.current_mmr = int(new_mmr)
             return d
         if new_mmr is not None and self.active_playlist == playlist:

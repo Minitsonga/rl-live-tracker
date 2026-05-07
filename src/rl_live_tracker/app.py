@@ -127,6 +127,7 @@ class AppController(QObject):
             "baseline_lu": "",
             "playlist": "",
             "baseline_mmr": None,  # int figé fin de match pour fallback si lastUpdated TRN ne bouge pas
+            "baseline_reliable": False,  # True si baseline capturée au chargement du match
         }
         self.poll_token = 0
         self._last_lobby_sig: Any = None
@@ -538,13 +539,15 @@ class AppController(QObject):
                     self.post_pending["active"] = False
             be = self.mmr_client.get(sid)
             blu = (be or {}).get("lastUpdated") or ""
-            frozen = self.session.freeze_baseline_at_match_end(pl, be)
+            frozen, reliable = self.session.freeze_baseline_at_match_end(pl, be)
             if frozen is None and pl in RANKED_PLAYLISTS:
                 frozen = self.session.current_mmr
+                reliable = False
             self.post_pending["active"] = True
             self.post_pending["baseline_lu"] = blu
             self.post_pending["playlist"] = pl
             self.post_pending["baseline_mmr"] = frozen
+            self.post_pending["baseline_reliable"] = bool(reliable)
             self_player = next((p for p in payload["players"] if p["key"] == sid), None)
             if self_player:
                 self._start_post_match_poll(self_player)
@@ -632,7 +635,13 @@ class AppController(QObject):
             return
         pl = self.post_pending.get("playlist") or "other"
         base_mmr = self.post_pending.get("baseline_mmr")
-        d = self.session.apply_post_match_trn(entry, pl, base_mmr)
+        base_reliable = bool(self.post_pending.get("baseline_reliable"))
+        d = self.session.apply_post_match_trn(
+            entry,
+            pl,
+            base_mmr,
+            baseline_reliable=base_reliable,
+        )
         if d is not None:
             event_log(f"TRN updated · {pl.upper()} · {d:+} MMR (last match)")
             mmr_log(
