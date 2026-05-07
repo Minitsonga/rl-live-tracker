@@ -4,7 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .mmr import RANKED_PLAYLISTS
+# Keep SessionState testable without Qt runtime:
+# importing mmr pulls PySide6, which is not needed for pure logic tests.
+try:
+    from .mmr import RANKED_PLAYLISTS
+except ModuleNotFoundError:
+    RANKED_PLAYLISTS = ("1v1", "2v2", "3v3")
 from .storage import playlist_from_player_count
 
 
