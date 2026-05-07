@@ -12,7 +12,7 @@ from PySide6.QtCore import QLockFile, QObject, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
 
-from .config import load_config, save_config
+from .config import apply_theme_preset, load_config, save_config
 from .focus_rl import (
     is_hwnd_foreground,
     is_rocket_league_foreground,
@@ -350,6 +350,8 @@ class AppController(QObject):
         self._menu.toggleRoster.connect(self._on_menu_toggle_roster)
         self._menu.toggleMmr.connect(self._on_menu_toggle_mmr)
         self._menu.anchorChanged.connect(self._on_menu_anchor)
+        self._menu.themePresetChanged.connect(self._on_menu_theme_preset)
+        self._menu.overlayOpacityChanged.connect(self._on_menu_overlay_opacity)
         self._menu.dragRequested.connect(self._on_menu_drag_requested)
         self._menu.dragFinished.connect(self._on_menu_drag_finished)
         self._menu.menuClosed.connect(self._sync_tray_from_state)
@@ -397,6 +399,17 @@ class AppController(QObject):
             self.overlay_session.reposition()
         else:
             self.overlay_roster.reposition()
+
+    def _on_menu_theme_preset(self, preset: str) -> None:
+        if apply_theme_preset(self.cfg, str(preset).strip().lower()):
+            save_config(self.cfg)
+            self._do_refresh()
+
+    def _on_menu_overlay_opacity(self, which: str, value: int) -> None:
+        key = "session_overlay_opacity" if which == "session" else "roster_overlay_opacity"
+        self.cfg[key] = max(10, min(100, int(value)))
+        save_config(self.cfg)
+        self._do_refresh()
 
     def _on_menu_drag_requested(self) -> None:
         self._set_drag_mode(True)
