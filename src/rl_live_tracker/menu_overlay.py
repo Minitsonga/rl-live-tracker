@@ -158,7 +158,7 @@ class MenuPanel(QWidget):
         )
         s_layout.addWidget(session_opacity_box)
         s_layout.addStretch(1)
-        tabs.addTab(tab_session, "match_summary")
+        tabs.addTab(tab_session, "Stats Tracker")
 
         tab_roster = QWidget()
         r_layout = QVBoxLayout(tab_roster)
@@ -197,7 +197,7 @@ class MenuPanel(QWidget):
         )
         r_layout.addWidget(roster_opacity_box)
         r_layout.addStretch(1)
-        tabs.addTab(tab_roster, "lobby_ranks")
+        tabs.addTab(tab_roster, "Lobby Ranks")
 
         self.setStyleSheet(
             "MenuPanel {"
