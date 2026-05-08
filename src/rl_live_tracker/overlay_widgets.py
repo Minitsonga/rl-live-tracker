@@ -117,31 +117,14 @@ class TransparentOverlay(QWidget):
         self.resize(72, 48)
         self.hide()
 
-    def _opacity_key(self) -> str:
-        return "session_overlay_opacity" if self._position_key == "position_session" else "roster_overlay_opacity"
-
-    @staticmethod
-    def _rgba_with_overlay_opacity(rgba: object, percent: int, fallback: list[int]) -> str:
-        src = rgba if isinstance(rgba, (list, tuple)) else fallback
-        vals = [int(src[i]) if i < len(src) else fallback[i] for i in range(4)]
-        vals[3] = max(0, min(255, int(round(vals[3] * (percent / 100.0)))))
-        return ",".join(str(v) for v in vals)
-
     def _apply_style_from_cfg(self) -> None:
-        op = self.cfg.get(self._opacity_key(), 100)
-        try:
-            percent = int(op)
-        except (TypeError, ValueError):
-            percent = 100
-        percent = max(0, min(100, percent))
-        if self._drag_enabled:
-            # Drag mode: use default full opacity for better placement visibility.
-            percent = 100
-        bg_rgba = self._rgba_with_overlay_opacity(
-            self.cfg.get("background_rgba"), percent, [10, 12, 16, 110]
-        )
-        border_rgba = self._rgba_with_overlay_opacity(
-            self.cfg.get("border_rgba"), percent, [0, 200, 255, 45]
+        bg = self.cfg.get("background_rgba")
+        border = self.cfg.get("border_rgba")
+        bg_vals = bg if isinstance(bg, (list, tuple)) else [10, 12, 16, 110]
+        border_vals = border if isinstance(border, (list, tuple)) else [0, 200, 255, 45]
+        bg_rgba = ",".join(str(int(bg_vals[i]) if i < len(bg_vals) else [10, 12, 16, 110][i]) for i in range(4))
+        border_rgba = ",".join(
+            str(int(border_vals[i]) if i < len(border_vals) else [0, 200, 255, 45][i]) for i in range(4)
         )
         radius = int(self.cfg.get("border_radius_px", 6))
         tc = self.cfg.get("text_color", "#e4eaf4")
