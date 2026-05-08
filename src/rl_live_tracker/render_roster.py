@@ -225,7 +225,6 @@ def render_roster_html(
 
 
 def render_roster_preview_html(cfg: dict) -> str:
-    preset = roster_mmr_preset(cfg)
     # Always preview lobby in a 1v1 scenario.
     active_pl = "1v1"
 
