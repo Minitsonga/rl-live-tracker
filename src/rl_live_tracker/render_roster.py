@@ -226,10 +226,8 @@ def render_roster_html(
 
 def render_roster_preview_html(cfg: dict) -> str:
     preset = roster_mmr_preset(cfg)
-    active_pl = "2v2"
-    if preset in ("mmr_only", "full_2v2_mmr"):
-        # Use a non-2v2 active playlist to preview the 2v2 secondary segment too.
-        active_pl = "1v1"
+    # Always preview lobby in a 1v1 scenario.
+    active_pl = "1v1"
 
     roster = [
         {"key": "preview_blue_1", "name": "Blue One", "team": 0},
