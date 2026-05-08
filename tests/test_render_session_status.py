@@ -22,8 +22,8 @@ def test_status_row_shows_playlist_and_connected_in_match() -> None:
     html = render_session_html(_cfg(), session, in_match=True)
 
     assert "2v2" in html
-    assert "Status:" in html
-    assert "Connected" in html
+    assert "width:8px; height:8px;" in html
+    assert "background:#00e5a0" in html
 
 
 def test_status_row_shows_menu_and_offline_out_of_match() -> None:
@@ -34,7 +34,7 @@ def test_status_row_shows_menu_and_offline_out_of_match() -> None:
     html = render_session_html(_cfg(), session, in_match=False)
 
     assert "Menu" in html
-    assert "Offline" in html
+    assert "background:#ff4060" in html
 
 
 def test_status_row_shows_reconnecting_when_in_match_and_disconnected() -> None:
@@ -45,4 +45,4 @@ def test_status_row_shows_reconnecting_when_in_match_and_disconnected() -> None:
     html = render_session_html(_cfg(), session, in_match=True)
 
     assert "Other" in html
-    assert "Reconnecting" in html
+    assert "background:#ffb347" in html
