@@ -62,13 +62,10 @@ def render_session_html(cfg: dict, session: "SessionState", in_match: bool = Fal
     pl = session.active_playlist
     pl_label = _playlist_label(pl, in_match)
     if session.stats_connected:
-        status_txt = "Connected"
         status_color = wc
     elif in_match:
-        status_txt = "Reconnecting"
         status_color = "#ffb347"
     else:
-        status_txt = "Offline"
         status_color = lc
     show_mmr = bool(cfg.get("show_mmr_ingame", True))
     if not show_mmr:
@@ -135,8 +132,7 @@ def render_session_html(cfg: dict, session: "SessionState", in_match: bool = Fal
 <span style='font-size:9pt; color:{ac}; font-weight:700;'>{_esc(pl_label)}</span>
 </td>
 <td align="right" style="vertical-align:middle; white-space:nowrap; padding-left:8pt;">
-<span style='font-size:9pt; color:{lc_label}; font-weight:700;'>Status:</span>{_NB}
-<span style='font-size:9pt; color:{status_color}; font-weight:700;'>{status_txt}</span>
+<span style='display:inline-block; width:8px; height:8px; border-radius:4px; background:{status_color};'></span>
 </td>
 </tr></table>"""
     )
