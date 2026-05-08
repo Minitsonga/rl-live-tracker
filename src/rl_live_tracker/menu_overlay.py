@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSlider,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -39,7 +38,6 @@ class MenuPanel(QWidget):
     toggleMmr = Signal(bool)
     rosterMmrPresetChanged = Signal(str)
     themePresetChanged = Signal(str)
-    overlayOpacityChanged = Signal(str, int)  # which: "session"|"roster"
     lobbyPreviewToggled = Signal(bool)
     anchorChanged = Signal(str, str)  # "session"|"roster", anchor id
     dragRequested = Signal()
@@ -152,11 +150,6 @@ class MenuPanel(QWidget):
         s_layout.addWidget(sec_session)
         self._session_group, sess_row = self._build_anchor_row("session")
         s_layout.addLayout(sess_row)
-        session_opacity_box, self._slider_session_opacity, self._lbl_session_opacity = self._build_opacity_slider(
-            "session",
-            "Opacity (background + border)",
-        )
-        s_layout.addWidget(session_opacity_box)
         s_layout.addStretch(1)
         tabs.addTab(tab_session, "Stats Tracker")
 
@@ -194,11 +187,6 @@ class MenuPanel(QWidget):
         )
         self._cb_lobby_preview.toggled.connect(self.lobbyPreviewToggled.emit)
         r_layout.addWidget(self._cb_lobby_preview)
-        roster_opacity_box, self._slider_roster_opacity, self._lbl_roster_opacity = self._build_opacity_slider(
-            "roster",
-            "Opacity (background + border)",
-        )
-        r_layout.addWidget(roster_opacity_box)
         r_layout.addStretch(1)
         tabs.addTab(tab_roster, "Lobby Ranks")
 
@@ -227,36 +215,6 @@ class MenuPanel(QWidget):
             "  background: rgb(32, 42, 58); color: #e4eaf4; selection-background-color: rgba(0, 100, 140, 200);"
             "}"
         )
-
-    def _build_opacity_slider(self, which: str, title: str) -> tuple[QWidget, QSlider, QLabel]:
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        lbl = QLabel(title)
-        lbl.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
-        row.addWidget(lbl)
-        val = QLabel("100%")
-        val.setStyleSheet("color: #e4eaf4; font-size: 9px; background: transparent;")
-        row.addWidget(val)
-        row.addStretch(1)
-
-        slider = QSlider(Qt.Horizontal)
-        slider.setMinimum(0)
-        slider.setMaximum(100)
-        slider.setSingleStep(1)
-        slider.setPageStep(5)
-        slider.setStyleSheet(
-            "QSlider::groove:horizontal { height: 6px; background: rgba(60,80,110,120); border-radius: 3px; }"
-            "QSlider::handle:horizontal { width: 12px; margin: -4px 0; background: rgba(0,200,255,200); border-radius: 6px; }"
-        )
-        slider.valueChanged.connect(lambda v, w=which, vlab=val: self._on_opacity_changed(w, int(v), vlab))
-
-        wrap = QVBoxLayout()
-        wrap.setSpacing(4)
-        wrap.addLayout(row)
-        wrap.addWidget(slider)
-        container = QWidget()
-        container.setLayout(wrap)
-        return container, slider, val
 
     def _build_anchor_row(self, which: str) -> tuple[QButtonGroup, QHBoxLayout]:
         row = QHBoxLayout()
@@ -300,10 +258,6 @@ class MenuPanel(QWidget):
         if pid:
             self.themePresetChanged.emit(str(pid))
 
-    def _on_opacity_changed(self, which: str, value: int, label: QLabel) -> None:
-        label.setText(f"{int(value)}%")
-        self.overlayOpacityChanged.emit(which, int(value))
-
     def _sync_roster_mmr_combo(self) -> None:
         preset = str(self._cfg.get("roster_mmr_preset") or "full").strip().lower()
         self._combo_roster_mmr.blockSignals(True)
@@ -329,20 +283,6 @@ class MenuPanel(QWidget):
                 self._combo_theme.setCurrentIndex(0)
         finally:
             self._combo_theme.blockSignals(False)
-
-    def _sync_opacity_sliders(self) -> None:
-        s = int(self._cfg.get("session_overlay_opacity", 100) or 100)
-        r = int(self._cfg.get("roster_overlay_opacity", 100) or 100)
-        s = max(0, min(100, s))
-        r = max(0, min(100, r))
-        self._slider_session_opacity.blockSignals(True)
-        self._slider_roster_opacity.blockSignals(True)
-        self._slider_session_opacity.setValue(s)
-        self._slider_roster_opacity.setValue(r)
-        self._slider_session_opacity.blockSignals(False)
-        self._slider_roster_opacity.blockSignals(False)
-        self._lbl_session_opacity.setText(f"{s}%")
-        self._lbl_roster_opacity.setText(f"{r}%")
 
     def _sync_anchor_group(self, group: QButtonGroup, anchor: str) -> None:
         group.blockSignals(True)
@@ -380,7 +320,6 @@ class MenuPanel(QWidget):
         self._sync_anchor_group(self._roster_group, ra)
         self._sync_roster_mmr_combo()
         self._sync_theme_combo()
-        self._sync_opacity_sliders()
 
     def is_drag_from_menu_active(self) -> bool:
         return self._drag_from_menu
