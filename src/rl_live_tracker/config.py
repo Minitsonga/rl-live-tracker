@@ -91,8 +91,6 @@ DEFAULT_CONFIG = {
     "show_session_overlay": True,
     "show_roster_overlay": False,
     "theme_preset": "pro_classic",
-    "session_overlay_opacity": 100,
-    "roster_overlay_opacity": 100,
     # Ancres : top-left | top-right | bottom-left | bottom-right | custom
     "position_session_anchor": "top-right",
     "position_roster_anchor": "top-left",
@@ -198,17 +196,6 @@ def _migrate_loaded(cfg: dict, loaded: Optional[dict]) -> bool:
     if "theme_preset" not in loaded:
         cfg["theme_preset"] = "pro_classic"
         changed = True
-    # clamp per-overlay opacity sliders
-    for k in ("session_overlay_opacity", "roster_overlay_opacity"):
-        raw = cfg.get(k, 100)
-        try:
-            v = int(raw)
-        except (TypeError, ValueError):
-            v = 100
-        vv = max(0, min(100, v))
-        if raw != vv:
-            cfg[k] = vv
-            changed = True
     return changed
 
 
