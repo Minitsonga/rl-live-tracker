@@ -109,8 +109,8 @@ class MenuPanel(QWidget):
         sec_display.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         g_layout.addWidget(sec_display)
 
-        self._cb_session = QCheckBox("Show match_summary")
-        self._cb_roster = QCheckBox("Show lobby_ranks")
+        self._cb_session = QCheckBox("Show Stats Tracker")
+        self._cb_roster = QCheckBox("Show Lobby Ranks")
         self._cb_mmr = QCheckBox("Show in-game MMR")
         for cb in (self._cb_session, self._cb_roster, self._cb_mmr):
             cb.setStyleSheet(
@@ -147,7 +147,7 @@ class MenuPanel(QWidget):
         s_layout = QVBoxLayout(tab_session)
         s_layout.setContentsMargins(8, 8, 8, 8)
         s_layout.setSpacing(8)
-        sec_session = QLabel("match_summary")
+        sec_session = QLabel("Position")
         sec_session.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         s_layout.addWidget(sec_session)
         self._session_group, sess_row = self._build_anchor_row("session")
@@ -164,7 +164,7 @@ class MenuPanel(QWidget):
         r_layout = QVBoxLayout(tab_roster)
         r_layout.setContentsMargins(8, 8, 8, 8)
         r_layout.setSpacing(8)
-        sec_roster = QLabel("lobby_ranks")
+        sec_roster = QLabel("Lobby Display Text")
         sec_roster.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         r_layout.addWidget(sec_roster)
         sec_mmr = QLabel("Lobby MMR line")
@@ -176,6 +176,9 @@ class MenuPanel(QWidget):
         self._combo_roster_mmr.currentIndexChanged.connect(self._emit_roster_mmr_preset)
         self._style_combo(self._combo_roster_mmr)
         r_layout.addWidget(self._combo_roster_mmr)
+        sec_roster_position = QLabel("Position")
+        sec_roster_position.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        r_layout.addWidget(sec_roster_position)
         self._roster_group, rost_row = self._build_anchor_row("roster")
         r_layout.addLayout(rost_row)
         self._cb_lobby_preview = QCheckBox("Preview lobby overlay (outside match)")
