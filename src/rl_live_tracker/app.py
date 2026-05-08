@@ -360,7 +360,6 @@ class AppController(QObject):
         self._menu.toggleMmr.connect(self._on_menu_toggle_mmr)
         self._menu.anchorChanged.connect(self._on_menu_anchor)
         self._menu.themePresetChanged.connect(self._on_menu_theme_preset)
-        self._menu.overlayOpacityChanged.connect(self._on_menu_overlay_opacity)
         self._menu.lobbyPreviewToggled.connect(self._on_menu_lobby_preview_toggled)
         self._menu.dragRequested.connect(self._on_menu_drag_requested)
         self._menu.dragFinished.connect(self._on_menu_drag_finished)
@@ -414,12 +413,6 @@ class AppController(QObject):
         if apply_theme_preset(self.cfg, str(preset).strip().lower()):
             save_config(self.cfg)
             self._do_refresh()
-
-    def _on_menu_overlay_opacity(self, which: str, value: int) -> None:
-        key = "session_overlay_opacity" if which == "session" else "roster_overlay_opacity"
-        self.cfg[key] = max(0, min(100, int(value)))
-        save_config(self.cfg)
-        self._do_refresh()
 
     def _on_menu_lobby_preview_toggled(self, checked: bool) -> None:
         self._lobby_preview_enabled = bool(checked)
