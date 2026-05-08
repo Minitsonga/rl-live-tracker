@@ -160,9 +160,6 @@ class MenuPanel(QWidget):
         sec_roster = QLabel("Lobby Display Text")
         sec_roster.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
         r_layout.addWidget(sec_roster)
-        sec_mmr = QLabel("Lobby MMR line")
-        sec_mmr.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
-        r_layout.addWidget(sec_mmr)
         self._combo_roster_mmr = QComboBox()
         for _pid, label in ROSTER_MMR_PRESET_OPTIONS:
             self._combo_roster_mmr.addItem(label, _pid)
