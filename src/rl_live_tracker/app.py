@@ -859,7 +859,7 @@ class AppController(QObject):
 
         act_settings.triggered.connect(_open_settings)
 
-        act_sess = QAction("Show match_summary", menu)
+        act_sess = QAction("Show Stats Tracker", menu)
         act_sess.setCheckable(True)
         act_sess.setChecked(self._visibility["session"])
 
@@ -871,7 +871,7 @@ class AppController(QObject):
 
         act_sess.toggled.connect(_sync_sess)
 
-        act_roster = QAction("Show lobby_ranks", menu)
+        act_roster = QAction("Show Lobby Ranks", menu)
         act_roster.setCheckable(True)
         act_roster.setChecked(self._visibility["roster"])
 
