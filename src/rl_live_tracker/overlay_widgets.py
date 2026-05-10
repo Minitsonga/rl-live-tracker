@@ -126,6 +126,8 @@ class TransparentOverlay(QWidget):
         border_rgba = ",".join(
             str(int(border_vals[i]) if i < len(border_vals) else [0, 200, 255, 45][i]) for i in range(4)
         )
+        bg_alpha = int(bg_vals[3]) if len(bg_vals) > 3 else 110
+        border_alpha = int(border_vals[3]) if len(border_vals) > 3 else 45
         radius = int(self.cfg.get("border_radius_px", 6))
         tc = self.cfg.get("text_color", "#e4eaf4")
         ff = self.cfg.get("font_family", "Segoe UI")
@@ -135,12 +137,24 @@ class TransparentOverlay(QWidget):
         self._label.setFont(QFont(ff, fs))
         pad = self.cfg.get("overlay_padding_px") or [8, 10]
         py, px = (int(pad[0]), int(pad[1])) if len(pad) >= 2 else (8, 10)
+        if bg_alpha <= 0:
+            bg_rule = "background: transparent;"
+        else:
+            bg_rule = f"background-color: rgba({bg_rgba});"
+        if border_alpha <= 0:
+            border_rule = "border: none; outline: none;"
+        else:
+            border_rule = f"border: 1px solid rgba({border_rgba});"
+        if bg_alpha > 0 or border_alpha > 0:
+            radius_rule = f"border-radius: {radius}px;"
+        else:
+            radius_rule = ""
         self._label.setStyleSheet(
             "QLabel {"
             f"  color: {tc};"
-            f"  background-color: rgba({bg_rgba});"
-            f"  border: 1px solid rgba({border_rgba});"
-            f"  border-radius: {radius}px;"
+            f"  {bg_rule}"
+            f"  {border_rule}"
+            f"  {radius_rule}"
             f"  padding: {py}px {px}px;"
             "}"
         )
