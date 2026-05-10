@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Overlay HTML Examples</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --text: #eaf0ff;
+      --muted: #9ab0cc;
+      --accent: #35e3a3;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at top, #18243d, var(--bg));
+      color: var(--text);
+      font-family: Segoe UI, Arial, sans-serif;
+    }
+    h1, h2 {
+      margin: 0 0 8px 0;
+    }
+    p {
+      margin: 0 0 18px 0;
+      color: var(--muted);
+    }
+    .stack {
+      display: grid;
+      gap: 18px;
+      max-width: 980px;
+    }
+    .demo-wrap {
+      padding: 10px;
+      border: 1px solid rgba(120, 150, 200, 0.25);
+      border-radius: 10px;
+      background: rgba(10, 16, 30, 0.5);
+    }
+    .demo-title {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .scene {
+      position: relative;
+      width: 960px;
+      max-width: 100%;
+      height: 230px;
+      border-radius: 8px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 30%, rgba(245, 206, 94, 0.18), transparent 35%),
+        radial-gradient(circle at 80% 20%, rgba(0, 190, 255, 0.12), transparent 30%),
+        linear-gradient(170deg, #6a6f73 0%, #4a4f54 34%, #2e3540 35%, #253043 50%, #1d2535 100%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 -50px 120px rgba(0, 0, 0, 0.45);
+    }
+    .scene::after {
+      content: "Rocket League match scene (mock)";
+      position: absolute;
+      right: 10px;
+      bottom: 8px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+    .overlay-boundary {
+      position: absolute;
+      left: 18px;
+      top: 18px;
+      min-height: 0;
+      border: 1px dashed rgba(255, 255, 255, 0.45);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(3, 8, 15, 0.14);
+    }
+    /* Cadre collé au contenu (comme overlay au contenu in-game) */
+    .overlay-boundary--hug {
+      width: fit-content;
+      width: -moz-fit-content;
+      max-width: calc(100% - 40px);
+      box-sizing: border-box;
+    }
+    .boundary-label {
+      position: absolute;
+      top: -18px;
+      left: 0;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .overlay-real-size {
+      width: auto;
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Exemples d’overlays HTML</h1>
+  <p>Preview en taille réelle in-game, avec délimitation visible et taille spécifique par theme.</p>
+
+  <div class="stack">
+    <div class="demo-wrap">
+      <div class="demo-title">0) Pro Classic (theme existant)</div>
+      <div class="scene">
+        <div class="overlay-boundary" style="width:220px; min-height:86px;">
+          <div class="boundary-label">Pro Classic (inchangé · cap 180)</div>
+          <table class="overlay-real-size" style="width:180px; max-width:180px; border-collapse:collapse; background:rgba(8,12,18,0.86); border:1px solid rgba(0,170,255,0.56); border-radius:4px;">
+            <tr><td style="padding:0 0 2px 0; border-bottom:1px solid rgba(0,200,255,0.12); white-space:nowrap;">
+              <span style="font-size:9pt; color:#00c8ff; font-weight:700;">2v2</span>
+              <span style="float:right; margin-top:4px; display:inline-block; width:8px; height:8px; border-radius:4px; background:#35e3a3; border:1px solid rgba(255,255,255,0.45);"></span>
+            </td></tr>
+            <tr><td style="padding:3px 0 0 0;">
+              <table width="100%" style="border-collapse:collapse; margin:0;"><tr>
+                <td style="white-space:nowrap; vertical-align:middle;">
+                  <span style="font-size:9pt; color:#d4e2f4; font-weight:700;">MMR</span>
+                  <span style="font-size:12pt; color:#f4f7fc; font-weight:800; margin-left:2px;">1346</span>
+                  <span style="font-size:10pt; color:#00e5a0; font-weight:800; margin-left:2px;">(+12)</span>
+                </td>
+                <td align="right" style="white-space:nowrap; vertical-align:middle; padding-left:8pt;">
+                  <span style="font-size:10pt; color:#00e5a0; font-weight:800;">+3</span> <span style="font-size:11pt;">🔥</span>
+                </td>
+              </tr></table>
+            </td></tr>
+            <tr><td style="padding:4px 0 0 0; white-space:nowrap;">
+              <span style="font-size:11pt; color:#00e5a0; font-weight:700;">10</span><span style="font-size:10pt; color:#00e5a0; font-weight:800; margin-left:2px;">W</span>
+              <span style="font-size:11pt; color:#ff4060; font-weight:700; margin-left:8px;">2</span><span style="font-size:10pt; color:#ff4060; font-weight:800; margin-left:2px;">L</span>
+              <span style="margin-left:8px; font-size:10pt; color:#d4e2f4;">Last :</span>
+              <span style="font-size:11pt; color:#00e5a0; font-weight:800; margin-left:4px;">+9</span>
+            </td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-wrap">
+      <div class="demo-title">1) Minimal Line (texte seul — aucun contour in-game)</div>
+      <div class="scene">
+        <div style="position: absolute; left: 18px; top: 18px;">
+          <div style="font-size: 11px; color: rgba(255, 255, 255, 0.55); margin-bottom: 6px; letter-spacing: 0.02em; text-transform: uppercase;">
+            Pas de cadre ni fond (plafond largeur 320)
+          </div>
+          <div class="overlay-real-size" style="display:inline-block; font-size:10pt; color:#f5f7ff; line-height:1.2; white-space:nowrap;">
+            <span style="color:#9ecbff; font-weight:700;">2v2</span>
+            <span style="display:inline-block; width:8px; height:8px; border-radius:4px; background:#35e3a3; border:1px solid rgba(255,255,255,0.45); margin:0 10px 1px 8px;"></span>
+            <span style="color:#c9d7ea;">MMR</span>
+            <span style="font-weight:800; margin-left:4px;">1346</span>
+            <span style="color:#35e3a3; font-weight:700; margin-left:3px;">(+12)</span>
+            <span style="margin-left:14px; color:#35e3a3; font-weight:700;">10W</span>
+            <span style="margin-left:6px; color:#ff6c86; font-weight:700;">2L</span>
+            <span style="margin-left:14px; font-weight:700; color:#f5f7ff;">+3 🔥</span>
+            <span style="margin-left:14px; color:#c9d7ea;">Last</span>
+            <span style="font-weight:700; margin-left:3px; color:#35e3a3;">+9</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-wrap">
+      <div class="demo-title">2) Broadcast Card (bloc structure)</div>
+      <div class="scene">
+        <div class="overlay-boundary overlay-boundary--hug">
+          <div class="boundary-label">Cap 280 · cadre = largeur du bloc</div>
+          <table class="overlay-real-size" cellspacing="0" cellpadding="0" style="display:inline-block; border-collapse:separate; border-spacing:0; background:rgba(10,14,22,0.92); border:1px solid rgba(255,196,60,0.85); border-radius:12px; overflow:hidden;">
+            <tr>
+              <td style="padding:7px 10px; background:rgba(255,196,60,0.15);">
+                <span style="font-weight:800; color:#ffd46b; letter-spacing:.04em;">STATS TRACKER</span>
+                <span style="float:right; color:#9bb0c8; font-weight:700;">2v2</span>
+                <span style="float:right; display:inline-block; width:8px; height:8px; border-radius:4px; background:#35e3a3; border:1px solid rgba(255,255,255,0.45); margin:5px 8px 0 0;"></span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 10px;">
+                <span style="color:#aabbd4;">MMR</span>
+                <span style="font-size:13pt; font-weight:900; color:#f7fbff; margin-left:6px;">1346</span>
+                <span style="font-weight:800; color:#35e3a3; margin-left:4px;">(+12)</span>
+                <span style="float:right; color:#aabbd4;">Last <span style="color:#35e3a3; font-weight:800;">+9</span></span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 10px 10px 10px;">
+                <span style="display:inline-block; min-width:44px; text-align:center; padding:3px 5px; border-radius:6px; background:rgba(53,227,163,0.16); color:#35e3a3; font-weight:800;">10 W</span>
+                <span style="display:inline-block; min-width:44px; text-align:center; padding:3px 5px; border-radius:6px; background:rgba(255,108,134,0.16); color:#ff6c86; font-weight:800; margin-left:6px;">2 L</span>
+                <span style="float:right; color:#f7fbff; font-weight:800;">+3 🔥</span>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-wrap">
+      <div class="demo-title">3) Console Strip (mono / terminal)</div>
+      <div class="scene">
+        <div class="overlay-boundary overlay-boundary--hug">
+          <div class="boundary-label">Cap 300 · cadre = largeur du texte</div>
+          <div class="overlay-real-size" style="display:inline-block; font-family:Consolas, monospace; font-size:10pt; color:#d8ffe2; background:rgba(0,0,0,0.88); border-left:3px solid #79ff9f; padding:6px 8px;">
+            <div>
+              <span style="color:#79ff9f;">[2v2]</span>
+              <span style="display:inline-block; width:7px; height:7px; border-radius:4px; background:#35e3a3; border:1px solid rgba(255,255,255,0.45); margin:0 8px 1px 8px;"></span>
+              <span style="color:#99b9a2;">MMR:</span> <span style="font-weight:700; color:#f2fff6;">1346</span>
+              <span style="color:#79ff9f;">(+12)</span>
+            </div>
+            <div style="margin-top:2px;">
+              <span style="color:#79ff9f;">W=10</span>
+              <span style="margin-left:8px; color:#ff8fa6;">L=2</span>
+              <span style="margin-left:12px; color:#f2fff6;">+3 🔥</span>
+              <span style="margin-left:12px; color:#99b9a2;">LAST=</span><span style="color:#79ff9f;">+9</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

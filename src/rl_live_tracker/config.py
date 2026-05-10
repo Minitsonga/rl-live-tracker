@@ -16,6 +16,8 @@ THEME_PRESETS: dict[str, dict] = {
         "overlay_padding_px": [4, 6],
         "font_size": 10,
         "font_family": "Segoe UI",
+        "width_session": 180,
+        "session_width_fill": 0.0,
         "text_color": "#f4f7fc",
         "label_color": "#d4e2f4",
         "accent_color": "#00c8ff",
@@ -23,14 +25,16 @@ THEME_PRESETS: dict[str, dict] = {
         "loss_color": "#ff4060",
         "muted_color": "#b8c6d9",
     },
-    "bare_text": {
-        "label": "Bare Text",
+    "minimal_line": {
+        "label": "Minimal Line",
         "background_rgba": [0, 0, 0, 0],
         "border_rgba": [0, 0, 0, 0],
         "border_radius_px": 0,
         "overlay_padding_px": [0, 0],
         "font_size": 9,
         "font_family": "Segoe UI",
+        "width_session": 320,
+        "session_width_fill": 0.0,
         "text_color": "#f3f7ff",
         "label_color": "#d7e1f0",
         "accent_color": "#a6d5ff",
@@ -38,20 +42,39 @@ THEME_PRESETS: dict[str, dict] = {
         "loss_color": "#ff8797",
         "muted_color": "#aab8cc",
     },
-    "broadcast_panel": {
-        "label": "Broadcast Panel",
+    "broadcast_card": {
+        "label": "Broadcast Card",
         "background_rgba": [8, 11, 18, 128],
         "border_rgba": [255, 195, 0, 160],
         "border_radius_px": 12,
         "overlay_padding_px": [8, 12],
         "font_size": 11,
         "font_family": "Trebuchet MS",
+        "width_session": 280,
+        "session_width_fill": 0.0,
         "text_color": "#f7f9ff",
         "label_color": "#ffe8a8",
         "accent_color": "#ffd15a",
         "win_color": "#4ef0b2",
         "loss_color": "#ff6a8a",
         "muted_color": "#c4cde0",
+    },
+    "console_strip": {
+        "label": "Console Strip",
+        "background_rgba": [0, 0, 0, 224],
+        "border_rgba": [121, 255, 159, 140],
+        "border_radius_px": 0,
+        "overlay_padding_px": [4, 6],
+        "font_size": 10,
+        "font_family": "Consolas",
+        "width_session": 300,
+        "session_width_fill": 0.0,
+        "text_color": "#d8ffe2",
+        "label_color": "#99b9a2",
+        "accent_color": "#79ff9f",
+        "win_color": "#79ff9f",
+        "loss_color": "#ff8fa6",
+        "muted_color": "#9db7a5",
     },
 }
 
@@ -113,6 +136,11 @@ DEFAULT_CONFIG = {
 
 def apply_theme_preset(cfg: dict, preset: str) -> bool:
     pid = str(preset or "").strip().lower()
+    legacy_map = {
+        "bare_text": "minimal_line",
+        "broadcast_panel": "broadcast_card",
+    }
+    pid = legacy_map.get(pid, pid)
     p = THEME_PRESETS.get(pid)
     if not p:
         return False
@@ -122,6 +150,8 @@ def apply_theme_preset(cfg: dict, preset: str) -> bool:
         "border_rgba",
         "border_radius_px",
         "overlay_padding_px",
+        "width_session",
+        "session_width_fill",
         "font_size",
         "font_family",
         "text_color",
@@ -212,6 +242,8 @@ def load_config() -> dict:
                 "border_rgba",
                 "border_radius_px",
                 "overlay_padding_px",
+                "width_session",
+                "session_width_fill",
                 "font_size",
                 "font_family",
                 "text_color",
