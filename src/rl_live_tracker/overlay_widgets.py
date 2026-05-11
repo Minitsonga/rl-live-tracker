@@ -1,11 +1,62 @@
 """Fenêtres frameless transparentes always-on-top (drag optionnel)."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, Qt, Signal
+import ctypes
+import sys
+
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QFont, QGuiApplication, QScreen
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .applog import warn_log
+
+
+def _cfg_minimal_line_theme(cfg: dict) -> bool:
+    return str(cfg.get("theme_preset") or "").strip().lower() in ("minimal_line", "bare_text")
+
+
+def _win32_strip_minimal_overlay_chrome(hwnd: int) -> None:
+    """Réduit au maximum le cadre DWM / ombre (Win 10–11). No-op hors Windows ou si hwnd invalide."""
+    if sys.platform != "win32" or hwnd <= 0:
+        return
+    try:
+        dwm = ctypes.windll.dwmapi  # type: ignore[attr-defined]
+
+        class _MARGINS(ctypes.Structure):
+            _fields_ = [
+                ("cxLeftWidth", ctypes.c_int),
+                ("cxRightWidth", ctypes.c_int),
+                ("cyTopHeight", ctypes.c_int),
+                ("cyBottomHeight", ctypes.c_int),
+            ]
+
+        dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(_MARGINS(0, 0, 0, 0)))
+
+        # DWMWA_NCRENDERING_POLICY = 2, DWMNCRP_DISABLED = 1
+        disabled = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 2, ctypes.byref(disabled), ctypes.sizeof(disabled))
+
+        # DWMWA_TRANSITIONS_FORCEDISABLED = 3
+        no_trans = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 3, ctypes.byref(no_trans), ctypes.sizeof(no_trans))
+
+        # Windows 11 : pas d'arrondi imposé par DWM (évite l'effet « pilule »).
+        # DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_DONOTROUND = 1
+        try:
+            corner = ctypes.c_int(1)
+            dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(corner), ctypes.sizeof(corner))
+        except Exception:
+            pass
+
+        # Windows 11 : pas de bordure dessinée par le shell.
+        # DWMWA_BORDER_COLOR = 34, DWMWA_COLOR_NONE = 0xFFFFFFFE
+        try:
+            border_none = ctypes.c_uint32(0xFFFFFFFE)
+            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border_none), ctypes.sizeof(border_none))
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 CORNER_ANCHORS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -203,6 +254,17 @@ class TransparentOverlay(QWidget):
             and all(isinstance(v, (int, float)) for v in raw)
         )
 
+    def _schedule_minimal_win32_chrome(self) -> None:
+        """DWM applique parfois le décor après le 1er frame : on réessaie (minimal_line seulement)."""
+        if not _cfg_minimal_line_theme(self.cfg):
+            return
+        h = int(self.winId())
+        if h <= 0:
+            return
+        _win32_strip_minimal_overlay_chrome(h)
+        QTimer.singleShot(0, lambda hn=h: _win32_strip_minimal_overlay_chrome(hn))
+        QTimer.singleShot(80, lambda hn=h: _win32_strip_minimal_overlay_chrome(hn))
+
     def set_html(self, html: str) -> None:
         self._apply_style_from_cfg()
         screen_obj = resolve_overlay_screen(self.cfg)
@@ -219,6 +281,7 @@ class TransparentOverlay(QWidget):
 
         if screen_obj is None:
             self._resize_pivot = None
+            self._schedule_minimal_win32_chrome()
             return
 
         nw, nh = self.width(), self.height()
@@ -245,6 +308,7 @@ class TransparentOverlay(QWidget):
         else:
             self._resize_pivot = None
             self._reposition()
+        self._schedule_minimal_win32_chrome()
 
     def set_drag_enabled(self, enabled: bool) -> None:
         enabled = bool(enabled)
@@ -265,11 +329,19 @@ class TransparentOverlay(QWidget):
 
     def _apply_window_flags(self) -> None:
         flags = Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        # Minimal Line uniquement : demande à Windows de ne pas ajouter d'ombre système.
+        if _cfg_minimal_line_theme(self.cfg):
+            flags |= Qt.NoDropShadowWindowHint
         # En mode drag : la fenêtre doit accepter la souris (et le focus évite des soucis sous Windows).
         if not self._drag_enabled:
             flags |= Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WA_ShowWithoutActivating, not self._drag_enabled)
+
+    def showEvent(self, event):  # noqa: N802
+        super().showEvent(event)
+        if _cfg_minimal_line_theme(self.cfg):
+            self._schedule_minimal_win32_chrome()
 
     def _sync_resize_pivot(self) -> None:
         anchor = self._resolved_anchor()
