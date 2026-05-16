@@ -242,10 +242,16 @@ class AppController(QObject):
         # Bureau / autre app : la fenêtre active n'est ni RL ni le menu → masquer les overlays.
         if self._menu.isVisible() and not self._preview_ok_while_menu_open():
             if self._drag_mode:
-                self.overlay_session.show()
-                self.overlay_roster.show()
-                self.overlay_session.raise_()
-                self.overlay_roster.raise_()
+                if self._visibility["session"]:
+                    self.overlay_session.show()
+                    self.overlay_session.raise_()
+                else:
+                    self.overlay_session.hide()
+                if roster_visible:
+                    self.overlay_roster.show()
+                    self.overlay_roster.raise_()
+                else:
+                    self.overlay_roster.hide()
             else:
                 self.overlay_session.hide()
                 self.overlay_roster.hide()
@@ -255,10 +261,16 @@ class AppController(QObject):
             # Le menu F5 est ouvert : RL n'a souvent plus le focus (fenêtre Qt au 1er plan).
             if self._menu.isVisible():
                 if self._drag_mode:
-                    self.overlay_session.show()
-                    self.overlay_roster.show()
-                    self.overlay_session.raise_()
-                    self.overlay_roster.raise_()
+                    if self._visibility["session"]:
+                        self.overlay_session.show()
+                        self.overlay_session.raise_()
+                    else:
+                        self.overlay_session.hide()
+                    if roster_visible:
+                        self.overlay_roster.show()
+                        self.overlay_roster.raise_()
+                    else:
+                        self.overlay_roster.hide()
                 else:
                     # Prévisualisation (focus encore dans le panneau réglages)
                     if self._visibility["session"]:
@@ -281,8 +293,16 @@ class AppController(QObject):
             return
 
         if self._drag_mode:
-            self.overlay_session.show()
-            self.overlay_roster.show()
+            if self._visibility["session"]:
+                self.overlay_session.show()
+                self.overlay_session.raise_()
+            else:
+                self.overlay_session.hide()
+            if roster_visible:
+                self.overlay_roster.show()
+                self.overlay_roster.raise_()
+            else:
+                self.overlay_roster.hide()
             return
 
         if self._visibility["session"]:
@@ -441,12 +461,15 @@ class AppController(QObject):
 
     def _on_menu_drag_finished(self) -> None:
         self._set_drag_mode(False)
-        sx, sy = self.overlay_session.current_pos()
-        rx, ry = self.overlay_roster.current_pos()
-        self.cfg["position_session_custom_xy"] = [sx, sy]
-        self.cfg["position_roster_custom_xy"] = [rx, ry]
-        self.cfg["position_session_anchor"] = "custom"
-        self.cfg["position_roster_anchor"] = "custom"
+        roster_visible = bool(self._visibility["roster"] or self._lobby_preview_enabled)
+        if self._visibility["session"]:
+            sx, sy = self.overlay_session.current_pos()
+            self.cfg["position_session_custom_xy"] = [sx, sy]
+            self.cfg["position_session_anchor"] = "custom"
+        if roster_visible:
+            rx, ry = self.overlay_roster.current_pos()
+            self.cfg["position_roster_custom_xy"] = [rx, ry]
+            self.cfg["position_roster_anchor"] = "custom"
         save_config(self.cfg)
         if self._menu.isVisible():
             self._menu.sync_from_app(
@@ -762,11 +785,7 @@ class AppController(QObject):
         self._menu.set_drag_toggle_state(self._drag_mode)
         self.overlay_session.set_drag_enabled(self._drag_mode)
         self.overlay_roster.set_drag_enabled(self._drag_mode)
-        if self._drag_mode:
-            self.overlay_session.show()
-            self.overlay_roster.show()
-            self.overlay_session.raise_()
-            self.overlay_roster.raise_()
+        self._sync_overlay_visibility()
         if hasattr(self, "_act_drag") and self._act_drag is not None:
             self._act_drag.blockSignals(True)
             self._act_drag.setChecked(self._drag_mode)
