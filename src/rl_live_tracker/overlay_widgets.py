@@ -179,7 +179,7 @@ class TransparentOverlay(QWidget):
         )
         bg_alpha = int(bg_vals[3]) if len(bg_vals) > 3 else 110
         border_alpha = int(border_vals[3]) if len(border_vals) > 3 else 45
-        radius = int(self.cfg.get("border_radius_px", 6))
+        radius_rule = "border-radius: 0px;"
         tc = self.cfg.get("text_color", "#e4eaf4")
         ff = self.cfg.get("font_family", "Segoe UI")
         fs = int(self._body_font_pt) if self._body_font_pt is not None else int(
@@ -188,18 +188,21 @@ class TransparentOverlay(QWidget):
         self._label.setFont(QFont(ff, fs))
         pad = self.cfg.get("overlay_padding_px") or [8, 10]
         py, px = (int(pad[0]), int(pad[1])) if len(pad) >= 2 else (8, 10)
-        if bg_alpha <= 0:
-            bg_rule = "background: transparent;"
+
+        drag_chrome = self._drag_enabled
+        if drag_chrome:
+            bg_rule = "background-color: rgba(0,0,0,0.42);"
+            border_rule = "border: 1px dashed rgba(255,255,255,0.38);"
         else:
-            bg_rule = f"background-color: rgba({bg_rgba});"
-        if border_alpha <= 0:
-            border_rule = "border: none; outline: none;"
-        else:
-            border_rule = f"border: 1px solid rgba({border_rgba});"
-        if bg_alpha > 0 or border_alpha > 0:
-            radius_rule = f"border-radius: {radius}px;"
-        else:
-            radius_rule = ""
+            if bg_alpha <= 0:
+                bg_rule = "background: transparent;"
+            else:
+                bg_rule = f"background-color: rgba({bg_rgba});"
+            if border_alpha <= 0:
+                border_rule = "border: none; outline: none;"
+            else:
+                border_rule = f"border: 1px solid rgba({border_rgba});"
+
         self._label.setStyleSheet(
             "QLabel {"
             f"  color: {tc};"
@@ -293,18 +296,22 @@ class TransparentOverlay(QWidget):
                 self._resize_pivot = _infer_homologous_screen_pivot(hyp_final, screen_rect)
 
             pivot = self._resize_pivot
-            if (
+            grew_from_tiny = (
                 old_geo.width() <= 96
                 and old_geo.height() <= 96
                 and nw > old_geo.width()
                 and nh > old_geo.height()
-            ):
+            )
+            size_changed = nw != old_geo.width() or nh != old_geo.height()
+            if grew_from_tiny:
                 self.move(cx, cy)
                 self.cfg[self._custom_pos_key] = [cx, cy]
-            else:
+            elif size_changed:
                 nx, ny = _new_topleft_keeping_corner(old_geo, pivot, nw, nh)
                 self.move(nx, ny)
                 self.cfg[self._custom_pos_key] = [int(nx), int(ny)]
+            else:
+                self.move(cx, cy)
         else:
             self._resize_pivot = None
             self._reposition()
@@ -319,6 +326,7 @@ class TransparentOverlay(QWidget):
         self._label.setAttribute(Qt.WA_TransparentForMouseEvents, enabled)
         was_visible = self.isVisible()
         self._apply_window_flags()
+        self._apply_style_from_cfg()
         if was_visible:
             self.show()
             self.raise_()
