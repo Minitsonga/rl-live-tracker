@@ -131,24 +131,48 @@ def render_session_html(cfg: dict, session: "SessionState", in_match: bool = Fal
         )
 
     if theme_id == "broadcast_card":
-        return f"""<table border="0" cellspacing="0" cellpadding="0"
- style="border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:10px;">
-<tr><td style="padding:6px 8px; background:rgba(255,196,60,0.15); white-space:nowrap;">
+        header_inner = (
+            f"""<table border="0" cellspacing="0" cellpadding="0" width="100%" style="margin:0;">
+<tr>
+<td style="vertical-align:middle; white-space:nowrap; padding:6px 8px 6px 8px;">
 <span style="font-size:9pt; color:{ac}; font-weight:800; letter-spacing:0.04em;">STATS TRACKER</span>
-<span style="float:right;">{status_dot}</span>
-<span style="float:right; margin-right:8px; color:{lc_label}; font-weight:700;">{_esc(pl_label)}</span>
-</td></tr>
-<tr><td style="padding:7px 8px 4px 8px; white-space:nowrap;">
+</td>
+<td align="right" style="vertical-align:middle; white-space:nowrap; padding:6px 8px 6px 8px;">
+<span style="color:{lc_label}; font-weight:700;">{_esc(pl_label)}</span>{_NB}{status_dot}
+</td>
+</tr></table>"""
+        )
+        row_mmr_last = (
+            f"""<table border="0" cellspacing="0" cellpadding="0" width="100%" style="margin:0;">
+<tr>
+<td style="vertical-align:middle; white-space:nowrap; padding:7px 8px 4px 8px;">
 <span style="color:{lc_label};">MMR</span>{_NB}
 <span style="font-size:13pt; color:{tc}; font-weight:900;">{mmr_txt}</span>{_NB}
 <span style="color:{sd_col}; font-weight:800;">({sd_sign})</span>
-<span style="float:right; color:{lc_label};">Last{_NB}<span style="color:{last_col}; font-weight:800;">{last_txt}</span></span>
-</td></tr>
-<tr><td style="padding:0 8px 8px 8px; white-space:nowrap;">
+</td>
+<td align="right" style="vertical-align:middle; white-space:nowrap; padding:7px 8px 4px 8px;">
+<span style="color:{lc_label};">Last</span>{_NB}<span style="color:{last_col}; font-weight:800;">{last_txt}</span>
+</td>
+</tr></table>"""
+        )
+        row_bottom = (
+            f"""<table border="0" cellspacing="0" cellpadding="0" width="100%" style="margin:0;">
+<tr>
+<td style="vertical-align:middle; white-space:nowrap; padding:0 8px 8px 8px;">
 <span style="display:inline-block; min-width:44px; text-align:center; padding:3px 5px; border-radius:6px; background:rgba(53,227,163,0.16); color:{wc}; font-weight:800;">{session.wins} W</span>
 <span style="display:inline-block; min-width:44px; text-align:center; padding:3px 5px; border-radius:6px; background:rgba(255,108,134,0.16); color:{lc}; font-weight:800; margin-left:6px;">{session.losses} L</span>
-<span style="float:right; color:{tc}; font-weight:800;">{streak_right}</span>
-</td></tr></table>"""
+</td>
+<td align="right" style="vertical-align:middle; white-space:nowrap; padding:0 8px 8px 8px;">
+<span style="color:{tc}; font-weight:800;">{streak_right}</span>
+</td>
+</tr></table>"""
+        )
+        return f"""<table border="0" cellspacing="0" cellpadding="0"
+ style="border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:10px;">
+<tr><td style="padding:0; background:rgba(255,196,60,0.15);">{header_inner}</td></tr>
+<tr><td style="padding:0;">{row_mmr_last}</td></tr>
+<tr><td style="padding:0;">{row_bottom}</td></tr>
+</table>"""
 
     if theme_id == "console_strip":
         return (

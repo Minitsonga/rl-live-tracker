@@ -46,3 +46,17 @@ def test_status_row_shows_reconnecting_when_in_match_and_disconnected() -> None:
 
     assert "Other" in html
     assert "background:#ffb347" in html
+
+
+def test_broadcast_card_shows_status_dot_without_float() -> None:
+    session = SessionState()
+    session.active_playlist = "2v2"
+    session.stats_connected = True
+    cfg = {**_cfg(), "theme_preset": "broadcast_card"}
+
+    html = render_session_html(cfg, session, in_match=True)
+
+    assert "STATS TRACKER" in html
+    assert "width:8px; height:8px;" in html
+    assert "background:#00e5a0" in html
+    assert "float:right" not in html
