@@ -12,7 +12,7 @@ THEME_PRESETS: dict[str, dict] = {
         "label": "Pro Classic",
         "background_rgba": [8, 12, 18, 86],
         "border_rgba": [0, 170, 255, 56],
-        "border_radius_px": 4,
+        "border_radius_px": 0,
         "overlay_padding_px": [4, 6],
         "font_size": 10,
         "font_family": "Segoe UI",
@@ -35,18 +35,18 @@ THEME_PRESETS: dict[str, dict] = {
         "font_family": "Segoe UI",
         "width_session": 320,
         "session_width_fill": 0.0,
-        "text_color": "#f3f7ff",
-        "label_color": "#d7e1f0",
-        "accent_color": "#a6d5ff",
-        "win_color": "#68e5b8",
-        "loss_color": "#ff8797",
-        "muted_color": "#aab8cc",
+        "text_color": "#f8fbff",
+        "label_color": "#cfe6ff",
+        "accent_color": "#38c4ff",
+        "win_color": "#00f0a8",
+        "loss_color": "#ff5c78",
+        "muted_color": "#9ec0e0",
     },
     "broadcast_card": {
         "label": "Broadcast Card",
         "background_rgba": [8, 11, 18, 128],
         "border_rgba": [255, 195, 0, 160],
-        "border_radius_px": 12,
+        "border_radius_px": 0,
         "overlay_padding_px": [8, 12],
         "font_size": 11,
         "font_family": "Trebuchet MS",
@@ -119,7 +119,7 @@ DEFAULT_CONFIG = {
     "width_roster": 268,
     "background_rgba": [6, 8, 12, 68],
     "border_rgba": [0, 200, 255, 28],
-    "border_radius_px": 4,
+    "border_radius_px": 0,
     "text_color": "#f4f7fc",
     "label_color": "#d4e2f4",
     "accent_color": "#00c8ff",
@@ -213,6 +213,9 @@ def _migrate_loaded(cfg: dict, loaded: Optional[dict]) -> bool:
         changed = True
     if "theme_preset" not in loaded:
         cfg["theme_preset"] = "pro_classic"
+        changed = True
+    if "overlay_square_corners" in cfg:
+        cfg.pop("overlay_square_corners", None)
         changed = True
     return changed
 
