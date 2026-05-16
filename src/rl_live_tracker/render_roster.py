@@ -13,7 +13,7 @@ _LEGACY_ROSTER_PRESET = frozenset({"compact", "rank_only"})
 ROSTER_MMR_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     (
         "full",
-        "Rank + MMR · ex. Diamond 2 II (1200) - 2v2: Champion 1 III (1320)",
+        "Rank + MMR · ex. Diamond 2 Div II (1200) - 2v2: Champion 1 Div III (1320)",
     ),
     (
         "mmr_only",
@@ -21,7 +21,7 @@ ROSTER_MMR_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ),
     (
         "full_2v2_mmr",
-        "Full rank (active mode) + 2v2: MMR only · ex. Diamond 2 II (1200) - 2v2: 1320",
+        "Full rank (active mode) + 2v2: MMR only · ex. Diamond 2 Div II (1200) - 2v2: 1320",
     ),
 )
 
@@ -60,7 +60,11 @@ def roster_overlay_empty_html(cfg: dict) -> str:
 
 def _rank_full_segment(pl_row: dict) -> str:
     tier = pl_row.get("tier") or "?"
-    div = (pl_row.get("division") or "").strip()
+    div = str(pl_row.get("division") or "").strip()
+    if div.lower().startswith("division "):
+        div = div[len("division "):].strip()
+    if div and not div.lower().startswith("div "):
+        div = f"Div {div}"
     mmr = pl_row.get("mmr")
     parts_td = [str(tier)]
     if div:
@@ -218,3 +222,46 @@ def render_roster_html(
         f"font-weight:700; letter-spacing:0.08em;'>{_esc(active_pl.upper())}</div>"
     )
     return head + block("BLUE", blue) + block("ORANGE", orange)
+
+
+def render_roster_preview_html(cfg: dict) -> str:
+    # Always preview lobby in a 1v1 scenario.
+    active_pl = "1v1"
+
+    roster = [
+        {"key": "preview_blue_1", "name": "Blue One", "team": 0},
+        {"key": "preview_blue_2", "name": "Blue Two", "team": 0},
+        {"key": "preview_orange_1", "name": "Orange One", "team": 1},
+        {"key": "preview_orange_2", "name": "Orange Two", "team": 1},
+    ]
+    mmr_db = {
+        "preview_blue_1": {
+            "playlists": {
+                "1v1": {"mmr": 1154, "tier": "Diamond 1", "division": "III"},
+                "2v2": {"mmr": 1310, "tier": "Champion 1", "division": "II"},
+                "3v3": {"mmr": 1068, "tier": "Platinum 3", "division": "IV"},
+            }
+        },
+        "preview_blue_2": {
+            "playlists": {
+                "1v1": {"mmr": 1092, "tier": "Platinum 3", "division": "II"},
+                "2v2": {"mmr": 1242, "tier": "Diamond 3", "division": "III"},
+                "3v3": {"mmr": 1028, "tier": "Platinum 2", "division": "IV"},
+            }
+        },
+        "preview_orange_1": {
+            "playlists": {
+                "1v1": {"mmr": 1218, "tier": "Diamond 3", "division": "I"},
+                "2v2": {"mmr": 1378, "tier": "Champion 2", "division": "I"},
+                "3v3": {"mmr": 1136, "tier": "Diamond 1", "division": "I"},
+            }
+        },
+        "preview_orange_2": {
+            "playlists": {
+                "1v1": {"mmr": 1036, "tier": "Platinum 2", "division": "I"},
+                "2v2": {"mmr": 1198, "tier": "Diamond 2", "division": "II"},
+                "3v3": {"mmr": 987, "tier": "Platinum 1", "division": "IV"},
+            }
+        },
+    }
+    return render_roster_html(cfg, roster, mmr_db, active_pl)

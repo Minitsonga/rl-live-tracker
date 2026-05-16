@@ -28,6 +28,18 @@ cd rl-live-tracker
 python -m pip install -r requirements.txt
 ```
 
+## Dev quality checks
+
+```powershell
+python -m pip install pre-commit pytest ruff
+pre-commit install
+pre-commit run --all-files
+$env:PYTHONPATH = "$PWD\src"; pytest -q
+```
+
+CI runs the same checks on `dev`, `staging`, and `main` pushes and on PRs targeting `staging`/`main`.
+Release is triggered only when pushing a version tag (example: `v0.1.1`).
+
 ## Run
 
 ```powershell

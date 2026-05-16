@@ -1,11 +1,62 @@
 """Fenêtres frameless transparentes always-on-top (drag optionnel)."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, Qt, Signal
+import ctypes
+import sys
+
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QFont, QGuiApplication, QScreen
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .applog import warn_log
+
+
+def _cfg_minimal_line_theme(cfg: dict) -> bool:
+    return str(cfg.get("theme_preset") or "").strip().lower() in ("minimal_line", "bare_text")
+
+
+def _win32_strip_minimal_overlay_chrome(hwnd: int) -> None:
+    """Réduit au maximum le cadre DWM / ombre (Win 10–11). No-op hors Windows ou si hwnd invalide."""
+    if sys.platform != "win32" or hwnd <= 0:
+        return
+    try:
+        dwm = ctypes.windll.dwmapi  # type: ignore[attr-defined]
+
+        class _MARGINS(ctypes.Structure):
+            _fields_ = [
+                ("cxLeftWidth", ctypes.c_int),
+                ("cxRightWidth", ctypes.c_int),
+                ("cyTopHeight", ctypes.c_int),
+                ("cyBottomHeight", ctypes.c_int),
+            ]
+
+        dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(_MARGINS(0, 0, 0, 0)))
+
+        # DWMWA_NCRENDERING_POLICY = 2, DWMNCRP_DISABLED = 1
+        disabled = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 2, ctypes.byref(disabled), ctypes.sizeof(disabled))
+
+        # DWMWA_TRANSITIONS_FORCEDISABLED = 3
+        no_trans = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 3, ctypes.byref(no_trans), ctypes.sizeof(no_trans))
+
+        # Windows 11 : pas d'arrondi imposé par DWM (évite l'effet « pilule »).
+        # DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_DONOTROUND = 1
+        try:
+            corner = ctypes.c_int(1)
+            dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(corner), ctypes.sizeof(corner))
+        except Exception:
+            pass
+
+        # Windows 11 : pas de bordure dessinée par le shell.
+        # DWMWA_BORDER_COLOR = 34, DWMWA_COLOR_NONE = 0xFFFFFFFE
+        try:
+            border_none = ctypes.c_uint32(0xFFFFFFFE)
+            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border_none), ctypes.sizeof(border_none))
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 CORNER_ANCHORS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -107,24 +158,8 @@ class TransparentOverlay(QWidget):
         self._label.setTextFormat(Qt.RichText)
         self._label.setWordWrap(word_wrap)
 
-        bg_rgba = ",".join(str(v) for v in cfg.get("background_rgba") or [10, 12, 16, 110])
-        border_rgba = ",".join(str(v) for v in cfg.get("border_rgba") or [0, 200, 255, 45])
-        radius = int(cfg.get("border_radius_px", 6))
-        tc = cfg.get("text_color", "#e4eaf4")
-        ff = cfg.get("font_family", "Segoe UI")
-        fs = int(body_font_pt) if body_font_pt is not None else int(cfg.get("font_size", 10))
-        self._label.setFont(QFont(ff, fs))
-        pad = cfg.get("overlay_padding_px") or [8, 10]
-        py, px = (int(pad[0]), int(pad[1])) if len(pad) >= 2 else (8, 10)
-        self._label.setStyleSheet(
-            "QLabel {"
-            f"  color: {tc};"
-            f"  background-color: rgba({bg_rgba});"
-            f"  border: 1px solid rgba({border_rgba});"
-            f"  border-radius: {radius}px;"
-            f"  padding: {py}px {px}px;"
-            "}"
-        )
+        self._body_font_pt = body_font_pt
+        self._apply_style_from_cfg()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._label)
@@ -132,6 +167,51 @@ class TransparentOverlay(QWidget):
         self._label.setText("")
         self.resize(72, 48)
         self.hide()
+
+    def _apply_style_from_cfg(self) -> None:
+        bg = self.cfg.get("background_rgba")
+        border = self.cfg.get("border_rgba")
+        bg_vals = bg if isinstance(bg, (list, tuple)) else [10, 12, 16, 110]
+        border_vals = border if isinstance(border, (list, tuple)) else [0, 200, 255, 45]
+        bg_rgba = ",".join(str(int(bg_vals[i]) if i < len(bg_vals) else [10, 12, 16, 110][i]) for i in range(4))
+        border_rgba = ",".join(
+            str(int(border_vals[i]) if i < len(border_vals) else [0, 200, 255, 45][i]) for i in range(4)
+        )
+        bg_alpha = int(bg_vals[3]) if len(bg_vals) > 3 else 110
+        border_alpha = int(border_vals[3]) if len(border_vals) > 3 else 45
+        radius_rule = "border-radius: 0px;"
+        tc = self.cfg.get("text_color", "#e4eaf4")
+        ff = self.cfg.get("font_family", "Segoe UI")
+        fs = int(self._body_font_pt) if self._body_font_pt is not None else int(
+            self.cfg.get("font_size", 10)
+        )
+        self._label.setFont(QFont(ff, fs))
+        pad = self.cfg.get("overlay_padding_px") or [8, 10]
+        py, px = (int(pad[0]), int(pad[1])) if len(pad) >= 2 else (8, 10)
+
+        drag_chrome = self._drag_enabled
+        if drag_chrome:
+            bg_rule = "background-color: rgba(0,0,0,0.42);"
+            border_rule = "border: 1px dashed rgba(255,255,255,0.38);"
+        else:
+            if bg_alpha <= 0:
+                bg_rule = "background: transparent;"
+            else:
+                bg_rule = f"background-color: rgba({bg_rgba});"
+            if border_alpha <= 0:
+                border_rule = "border: none; outline: none;"
+            else:
+                border_rule = f"border: 1px solid rgba({border_rgba});"
+
+        self._label.setStyleSheet(
+            "QLabel {"
+            f"  color: {tc};"
+            f"  {bg_rule}"
+            f"  {border_rule}"
+            f"  {radius_rule}"
+            f"  padding: {py}px {px}px;"
+            "}"
+        )
 
     def anchor_key(self) -> str:
         return self._anchor_key
@@ -177,7 +257,19 @@ class TransparentOverlay(QWidget):
             and all(isinstance(v, (int, float)) for v in raw)
         )
 
+    def _schedule_minimal_win32_chrome(self) -> None:
+        """DWM applique parfois le décor après le 1er frame : on réessaie (minimal_line seulement)."""
+        if not _cfg_minimal_line_theme(self.cfg):
+            return
+        h = int(self.winId())
+        if h <= 0:
+            return
+        _win32_strip_minimal_overlay_chrome(h)
+        QTimer.singleShot(0, lambda hn=h: _win32_strip_minimal_overlay_chrome(hn))
+        QTimer.singleShot(80, lambda hn=h: _win32_strip_minimal_overlay_chrome(hn))
+
     def set_html(self, html: str) -> None:
+        self._apply_style_from_cfg()
         screen_obj = resolve_overlay_screen(self.cfg)
         anchor = self._resolved_anchor()
         cx: int | None = None
@@ -192,6 +284,7 @@ class TransparentOverlay(QWidget):
 
         if screen_obj is None:
             self._resize_pivot = None
+            self._schedule_minimal_win32_chrome()
             return
 
         nw, nh = self.width(), self.height()
@@ -203,21 +296,26 @@ class TransparentOverlay(QWidget):
                 self._resize_pivot = _infer_homologous_screen_pivot(hyp_final, screen_rect)
 
             pivot = self._resize_pivot
-            if (
+            grew_from_tiny = (
                 old_geo.width() <= 96
                 and old_geo.height() <= 96
                 and nw > old_geo.width()
                 and nh > old_geo.height()
-            ):
+            )
+            size_changed = nw != old_geo.width() or nh != old_geo.height()
+            if grew_from_tiny:
                 self.move(cx, cy)
                 self.cfg[self._custom_pos_key] = [cx, cy]
-            else:
+            elif size_changed:
                 nx, ny = _new_topleft_keeping_corner(old_geo, pivot, nw, nh)
                 self.move(nx, ny)
                 self.cfg[self._custom_pos_key] = [int(nx), int(ny)]
+            else:
+                self.move(cx, cy)
         else:
             self._resize_pivot = None
             self._reposition()
+        self._schedule_minimal_win32_chrome()
 
     def set_drag_enabled(self, enabled: bool) -> None:
         enabled = bool(enabled)
@@ -228,6 +326,7 @@ class TransparentOverlay(QWidget):
         self._label.setAttribute(Qt.WA_TransparentForMouseEvents, enabled)
         was_visible = self.isVisible()
         self._apply_window_flags()
+        self._apply_style_from_cfg()
         if was_visible:
             self.show()
             self.raise_()
@@ -238,11 +337,19 @@ class TransparentOverlay(QWidget):
 
     def _apply_window_flags(self) -> None:
         flags = Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        # Minimal Line uniquement : demande à Windows de ne pas ajouter d'ombre système.
+        if _cfg_minimal_line_theme(self.cfg):
+            flags |= Qt.NoDropShadowWindowHint
         # En mode drag : la fenêtre doit accepter la souris (et le focus évite des soucis sous Windows).
         if not self._drag_enabled:
             flags |= Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WA_ShowWithoutActivating, not self._drag_enabled)
+
+    def showEvent(self, event):  # noqa: N802
+        super().showEvent(event)
+        if _cfg_minimal_line_theme(self.cfg):
+            self._schedule_minimal_win32_chrome()
 
     def _sync_resize_pivot(self) -> None:
         anchor = self._resolved_anchor()
