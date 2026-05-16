@@ -23,10 +23,30 @@ Restart Rocket League after editing this file.
 
 ## Installation
 
+### Windows installer (recommended)
+
+1. Download **`RLLiveTracker-Setup-x.y.z.exe`** from [GitHub Releases](https://github.com/Minitsonga/rl-live-tracker/releases) (available from **v1.0.0** onward; beta tags ship source ZIP only).
+2. Run the installer (per-user, no admin required). Optional: desktop shortcut, launch after install, **Start with Windows** (off by default).
+3. Config and logs live under `%LocalAppData%\RLLiveTracker\` (`data\`, `logs\`).
+
+**SmartScreen / antivirus:** unsigned PyInstaller builds may show “unknown publisher” or a false positive. Use **More info → Run anyway** if you trust the release, or run from source below.
+
+### From source (developers)
+
 ```powershell
 cd rl-live-tracker
 python -m pip install -r requirements.txt
 ```
+
+### Build the installer locally
+
+Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php):
+
+```powershell
+.\packaging\build.ps1
+```
+
+Output: `dist\RLLiveTracker\` (portable folder) and `dist\RLLiveTracker-Setup-*.exe`.
 
 ## Dev quality checks
 
@@ -38,7 +58,9 @@ $env:PYTHONPATH = "$PWD\src"; pytest -q
 ```
 
 CI runs the same checks on `dev`, `staging`, and `main` pushes and on PRs targeting `staging`/`main`.
-Release is triggered only when pushing a version tag (example: `v0.1.1`).
+Pushing a version tag (example: `v1.0.0`) runs the Release workflow: GitHub release notes, source archive, and Windows **Setup.exe** when the Windows build job succeeds.
+
+Pre-release example: `v1.0-beta.2` (sources only, no installer).
 
 ## Run
 
@@ -48,7 +70,9 @@ $env:PYTHONPATH = "$PWD\src"; python -m rl_live_tracker
 
 Or double-click `start.bat`.
 
-A tray icon appears near the clock (display shortcuts, network MMR, data folder, etc.).
+A tray icon appears near the clock (display shortcuts, network MMR, data folder, **About**, **Check for updates**, etc.).
+
+When Rocket League is **not** running, the app stays in **idle** mode (no Stats API TCP retries, slower timers) to reduce CPU and network use. Launch the tracker when you play, or enable **Start with Windows** in F5 if you want it in the tray before RL starts.
 
 ## Settings (F5)
 
@@ -70,6 +94,9 @@ By default, only one global hotkey is enabled: `menu_toggle_hotkeys` -> `["f5"]`
 - `position_session_anchor` / `position_roster_anchor`: `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `custom` with `position_*_custom_xy` `[x, y]`.
 - `show_session_overlay`, `show_roster_overlay`, `show_mmr_ingame`: persisted state for F5 panel toggles.
 - `roster_visible_default`: only used to migrate legacy configs into `show_roster_overlay`.
+- `idle_when_rl_closed`: pause Stats API when `RocketLeague.exe` is absent (default `true`).
+- `check_updates_on_startup`: optional GitHub Releases check (default `true`, non-blocking).
+- `launch_at_windows_startup`: HKCU Run entry (default `false`).
 
 ## First-time config template
 

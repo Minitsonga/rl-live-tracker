@@ -39,6 +39,7 @@ class MenuPanel(QWidget):
     rosterMmrPresetChanged = Signal(str)
     themePresetChanged = Signal(str)
     lobbyPreviewToggled = Signal(bool)
+    autostartToggled = Signal(bool)
     anchorChanged = Signal(str, str)  # "session"|"roster", anchor id
     dragRequested = Signal()
     dragFinished = Signal()
@@ -137,6 +138,25 @@ class MenuPanel(QWidget):
         self._combo_theme.currentIndexChanged.connect(self._emit_theme_preset)
         self._style_combo(self._combo_theme)
         g_layout.addWidget(self._combo_theme)
+
+        sec_startup = QLabel("Windows")
+        sec_startup.setStyleSheet(
+            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
+        )
+        g_layout.addWidget(sec_startup)
+        self._cb_autostart = QCheckBox("Start with Windows (optional)")
+        self._cb_autostart.setStyleSheet(
+            "QCheckBox {"
+            "  color: #e4eaf4; spacing: 8px;"
+            "  background: rgba(40, 52, 72, 220);"
+            "  padding: 6px 8px; border-radius: 4px;"
+            "  border: 1px solid rgba(80, 110, 150, 90);"
+            "}"
+            "QCheckBox:hover { background: rgba(50, 64, 88, 255); }"
+            "QCheckBox::indicator { width: 16px; height: 16px; }"
+        )
+        self._cb_autostart.toggled.connect(self.autostartToggled.emit)
+        g_layout.addWidget(self._cb_autostart)
 
         g_layout.addStretch(1)
         tabs.addTab(tab_global, "Global settings")
@@ -302,14 +322,17 @@ class MenuPanel(QWidget):
         self._cb_roster.blockSignals(True)
         self._cb_mmr.blockSignals(True)
         self._cb_lobby_preview.blockSignals(True)
+        self._cb_autostart.blockSignals(True)
         self._cb_session.setChecked(vis_session)
         self._cb_roster.setChecked(vis_roster)
         self._cb_mmr.setChecked(show_mmr)
         self._cb_lobby_preview.setChecked(preview_lobby)
+        self._cb_autostart.setChecked(bool(self._cfg.get("launch_at_windows_startup")))
         self._cb_session.blockSignals(False)
         self._cb_roster.blockSignals(False)
         self._cb_mmr.blockSignals(False)
         self._cb_lobby_preview.blockSignals(False)
+        self._cb_autostart.blockSignals(False)
 
         sa = str(self._cfg.get("position_session_anchor") or "top-right").lower()
         ra = str(self._cfg.get("position_roster_anchor") or "top-left").lower()

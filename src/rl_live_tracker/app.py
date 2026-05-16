@@ -8,10 +8,18 @@ import sys
 import threading
 from typing import Any, Callable, Optional
 
-from PySide6.QtCore import QLockFile, QObject, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
+from PySide6.QtCore import QLockFile, QObject, QThread, QTimer, Signal
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (
+    QApplication,
+    QMenu,
+    QMessageBox,
+    QSystemTrayIcon,
+    QWidget,
+)
 
+from . import __version__
+from .autostart import is_autostart_enabled, set_autostart_enabled
 from .config import apply_theme_preset, load_config, save_config
 from .focus_rl import (
     is_hwnd_foreground,
@@ -31,7 +39,11 @@ from .overlay_widgets import TransparentOverlay
 from .session_state import SessionState, mmr_for_playlist
 from .stats_client import StatsClient
 from .storage import append_match
+from .updates import ReleaseInfo, check_for_update
 from .applog import app_log, event_log, mmr_log, warn_log
+
+_TIMER_ACTIVE_MS = 450
+_TIMER_IDLE_MS = 5000
 
 
 def _arena_readable(arena: str, max_len: int = 42) -> str:
@@ -109,6 +121,17 @@ def _start_hotkeys_merged(mapping: dict[str, Callable[[], None]]) -> None:
             warn_log(f"keyboard listener stopped: {e}")
 
     threading.Thread(target=runner, daemon=True, name="Hotkeys").start()
+
+
+class _UpdateCheckThread(QThread):
+    finished = Signal(object, object)  # bool | None, ReleaseInfo | None
+
+    def run(self) -> None:
+        try:
+            newer, info = check_for_update()
+            self.finished.emit(newer, info)
+        except Exception:
+            self.finished.emit(None, None)
 
 
 class AppController(QObject):
@@ -189,6 +212,8 @@ class AppController(QObject):
         )
         self._rl_process_poll_i = 0
         self._rl_process_poll_every = 4  # 4 × 450 ms ≈ 1.8 s
+        self._rl_runtime_active = True
+        self._update_thread: Optional[_UpdateCheckThread] = None
 
         self.refresh_requested.connect(self._do_refresh)
         self.menu_toggle_requested.connect(self._toggle_menu)
@@ -200,9 +225,18 @@ class AppController(QObject):
         self._setup_hotkeys()
         self._do_refresh()
         self._focus_timer = QTimer(self)
-        self._focus_timer.setInterval(450)
+        self._focus_timer.setInterval(_TIMER_ACTIVE_MS)
         self._focus_timer.timeout.connect(self._on_focus_tick)
         self._focus_timer.start()
+        if sys.platform == "win32" and bool(self.cfg.get("idle_when_rl_closed", True)):
+            self._rl_runtime_active = rocket_league_process_running()
+            if not self._rl_runtime_active:
+                self._apply_idle_runtime(silent=True)
+            else:
+                self._apply_active_runtime(silent=True)
+        self._sync_autostart_from_registry()
+        if bool(self.cfg.get("check_updates_on_startup", True)):
+            QTimer.singleShot(8000, self._check_updates_startup)
         app_log("Ready — F5 hotkey · tray icon by the clock")
 
     def _user_focus_in_settings_panel(self) -> bool:
@@ -315,11 +349,130 @@ class AppController(QObject):
             self.overlay_roster.hide()
 
     def _on_focus_tick(self) -> None:
+        self._sync_rl_runtime_mode()
         self._sync_overlay_visibility()
         self._rl_process_poll_i += 1
         if self._rl_process_poll_i >= self._rl_process_poll_every:
             self._rl_process_poll_i = 0
             self._watch_rl_process_exit()
+
+    def _sync_rl_runtime_mode(self) -> None:
+        if sys.platform != "win32" or not bool(self.cfg.get("idle_when_rl_closed", True)):
+            return
+        running = rocket_league_process_running()
+        if running == self._rl_runtime_active:
+            return
+        self._rl_runtime_active = running
+        if running:
+            self._apply_active_runtime()
+        else:
+            self._apply_idle_runtime()
+
+    def _apply_idle_runtime(self, *, silent: bool = False) -> None:
+        self.stats.pause()
+        self._focus_timer.setInterval(_TIMER_IDLE_MS)
+        self._rl_process_poll_every = 1
+        if self._tray is not None:
+            self._tray.setToolTip("RL Live Tracker — waiting for Rocket League")
+        self.overlay_session.hide()
+        self.overlay_roster.hide()
+        if not silent:
+            app_log("Idle — Rocket League not running", dim=True)
+
+    def _apply_active_runtime(self, *, silent: bool = False) -> None:
+        self.stats.resume()
+        self._focus_timer.setInterval(_TIMER_ACTIVE_MS)
+        self._rl_process_poll_every = 4
+        if self._tray is not None:
+            self._tray.setToolTip("RL Live Tracker")
+        self._sync_overlay_visibility()
+        if not silent:
+            app_log("Active — Rocket League detected")
+
+    def _sync_autostart_from_registry(self) -> None:
+        if sys.platform != "win32":
+            return
+        reg = is_autostart_enabled()
+        cfg_val = bool(self.cfg.get("launch_at_windows_startup"))
+        if reg != cfg_val:
+            self.cfg["launch_at_windows_startup"] = reg
+            save_config(self.cfg)
+
+    def _on_menu_autostart_toggled(self, checked: bool) -> None:
+        ok = set_autostart_enabled(bool(checked))
+        if not ok and checked:
+            warn_log("Could not enable Windows autostart")
+            return
+        self.cfg["launch_at_windows_startup"] = bool(checked)
+        save_config(self.cfg)
+
+    def _check_updates_startup(self) -> None:
+        dismissed = str(self.cfg.get("last_dismissed_version") or "")
+        if dismissed and dismissed == __version__:
+            return
+        self._run_update_check(notify_if_current=False)
+
+    def _run_update_check(self, *, notify_if_current: bool = True) -> None:
+        if self._update_thread is not None and self._update_thread.isRunning():
+            return
+        self._update_thread = _UpdateCheckThread(self)
+        self._update_thread.finished.connect(
+            lambda newer, info: self._on_update_check_done(newer, info, notify_if_current)
+        )
+        self._update_thread.start()
+
+    def _on_update_check_done(
+        self,
+        newer: object,
+        info: object,
+        notify_if_current: bool,
+    ) -> None:
+        if newer is None:
+            if notify_if_current and self._tray is not None:
+                self._tray.showMessage(
+                    "RL Live Tracker",
+                    "Could not check for updates (network or GitHub unavailable).",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            return
+        if not isinstance(info, ReleaseInfo):
+            return
+        if newer is True:
+            dismissed = str(self.cfg.get("last_dismissed_version") or "")
+            if dismissed == info.version:
+                return
+            box = QMessageBox(self._menu)
+            box.setWindowTitle("Update available")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(f"A new version is available: {info.tag_name}")
+            box.setInformativeText(
+                f"You are running v{__version__}.\n\n{info.body[:280]}".strip()
+            )
+            open_btn = box.addButton("Open download page", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() == open_btn:
+                QDesktopServices.openUrl(info.html_url)
+            else:
+                self.cfg["last_dismissed_version"] = info.version
+                save_config(self.cfg)
+        elif notify_if_current:
+            QMessageBox.information(
+                self._menu,
+                "RL Live Tracker",
+                f"You are on the latest release (v{__version__}).",
+            )
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self._menu,
+            "About RL Live Tracker",
+            f"<b>RL Live Tracker</b><br>"
+            f"Version {__version__}<br><br>"
+            f"Data folder:<br><code>{DATA_DIR}</code><br><br>"
+            f'<a href="https://github.com/Minitsonga/rl-live-tracker">GitHub</a>',
+        )
 
     def _watch_rl_process_exit(self) -> None:
         if sys.platform != "win32":
@@ -381,6 +534,7 @@ class AppController(QObject):
         self._menu.anchorChanged.connect(self._on_menu_anchor)
         self._menu.themePresetChanged.connect(self._on_menu_theme_preset)
         self._menu.lobbyPreviewToggled.connect(self._on_menu_lobby_preview_toggled)
+        self._menu.autostartToggled.connect(self._on_menu_autostart_toggled)
         self._menu.dragRequested.connect(self._on_menu_drag_requested)
         self._menu.dragFinished.connect(self._on_menu_drag_finished)
         self._menu.menuClosed.connect(self._sync_tray_from_state)
@@ -949,6 +1103,12 @@ class AppController(QObject):
 
         act_folder.triggered.connect(_open_folder)
 
+        act_about = QAction("About…", menu)
+        act_about.triggered.connect(self._show_about)
+
+        act_updates = QAction("Check for updates…", menu)
+        act_updates.triggered.connect(lambda: self._run_update_check(notify_if_current=True))
+
         act_quit = QAction("Quit", menu)
         act_quit.triggered.connect(self.app.quit)
 
@@ -963,6 +1123,9 @@ class AppController(QObject):
         menu.addSeparator()
         menu.addAction(act_reset)
         menu.addAction(act_folder)
+        menu.addSeparator()
+        menu.addAction(act_about)
+        menu.addAction(act_updates)
         menu.addSeparator()
         menu.addAction(act_quit)
 

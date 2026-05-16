@@ -43,6 +43,8 @@ class StatsClient(QObject):
         self._task: Optional[asyncio.Task] = None
         self._thread = threading.Thread(target=self._run, daemon=True, name="StatsClient")
         self._api_dump_enabled = bool(api_dump_enabled)
+        self._paused = False
+        self._started = False
         self._reset()
 
     def _reset(self):
@@ -61,14 +63,35 @@ class StatsClient(QObject):
         self._update_state_count_this_match = 0
         self._last_game_block: Optional[dict] = None
 
-    def start(self):
-        self._thread.start()
+    def start(self) -> None:
+        if not self._started:
+            self._started = True
+            self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
+        self._paused = False
         loop, task = self._loop, self._task
         if loop is not None and task is not None and not task.done():
             loop.call_soon_threadsafe(task.cancel)
-        self._thread.join(timeout=3)
+        if self._started:
+            self._thread.join(timeout=3)
+            self._started = False
+
+    def pause(self) -> None:
+        """Arrête les tentatives TCP tant que Rocket League n'est pas lancé."""
+        if self._paused:
+            return
+        self._paused = True
+        loop, task = self._loop, self._task
+        if loop is not None and task is not None and not task.done():
+            loop.call_soon_threadsafe(task.cancel)
+        self.connection_status.emit(False)
+
+    def resume(self) -> None:
+        if not self._paused:
+            return
+        self._paused = False
+        self.start()
 
     def _run(self):
         try:
@@ -89,6 +112,8 @@ class StatsClient(QObject):
     async def _connect_loop(self):
         backoff = 1.0
         while True:
+            while self._paused:
+                await asyncio.sleep(0.5)
             try:
                 stats_log(f"connecting tcp://{self.host}:{self.port}")
                 await self._run_tcp()

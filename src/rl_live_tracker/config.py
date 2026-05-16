@@ -131,6 +131,14 @@ DEFAULT_CONFIG = {
     "overlay_padding_px": [4, 6],
     "overlays_visible_default": True,
     "roster_visible_default": False,
+    # Pause TCP / timer lent quand RocketLeague.exe n'est pas lancé (Windows).
+    "idle_when_rl_closed": True,
+    # Vérifier GitHub Releases au démarrage (non bloquant si échec).
+    "check_updates_on_startup": True,
+    # Dernière version pour laquelle l'utilisateur a ignoré la notif de mise à jour.
+    "last_dismissed_version": "",
+    # Démarrer avec Windows (HKCU Run) — désactivé par défaut.
+    "launch_at_windows_startup": False,
 }
 
 
@@ -217,6 +225,15 @@ def _migrate_loaded(cfg: dict, loaded: Optional[dict]) -> bool:
     if "overlay_square_corners" in cfg:
         cfg.pop("overlay_square_corners", None)
         changed = True
+    for key, default in (
+        ("idle_when_rl_closed", True),
+        ("check_updates_on_startup", True),
+        ("last_dismissed_version", ""),
+        ("launch_at_windows_startup", False),
+    ):
+        if key not in loaded:
+            cfg[key] = default
+            changed = True
     return changed
 
 
