@@ -33,10 +33,21 @@ _C = {
 _TAG_WIDTH = 8
 
 
+def _stderr() -> object | None:
+    """PyInstaller windowed (console=False) : sys.stderr peut être None."""
+    return sys.stderr
+
+
 def _stderr_color_ok() -> bool:
     if os.environ.get("NO_COLOR"):
         return False
-    if not sys.stderr.isatty():
+    err = _stderr()
+    if err is None:
+        return False
+    try:
+        if not err.isatty():  # type: ignore[union-attr]
+            return False
+    except (AttributeError, OSError):
         return False
     if sys.platform == "win32":
         try:
@@ -64,15 +75,21 @@ def _ts_file() -> str:
 
 
 def _print_tagged(tag: str, message: str, *, dim: bool = False) -> None:
+    err = _stderr()
+    if err is None:
+        return
     tag = tag[:_TAG_WIDTH]
-    if _USE_COLOR:
-        col = _C.get(tag.strip(), "\033[97m")
-        ts = f"{_DIM}{_ts_console()}{_RESET}"
-        tag_pad = f"{_BOLD}{col}{tag:>{_TAG_WIDTH}}{_RESET}"
-        body = f"{_DIM}{message}{_RESET}" if dim else message
-        print(f"{ts}  {tag_pad}  {body}", file=sys.stderr, flush=True)
-    else:
-        print(f"{_ts_console()}  [{tag:>{_TAG_WIDTH}}]  {message}", file=sys.stderr, flush=True)
+    try:
+        if _USE_COLOR:
+            col = _C.get(tag.strip(), "\033[97m")
+            ts = f"{_DIM}{_ts_console()}{_RESET}"
+            tag_pad = f"{_BOLD}{col}{tag:>{_TAG_WIDTH}}{_RESET}"
+            body = f"{_DIM}{message}{_RESET}" if dim else message
+            print(f"{ts}  {tag_pad}  {body}", file=err, flush=True)
+        else:
+            print(f"{_ts_console()}  [{tag:>{_TAG_WIDTH}}]  {message}", file=err, flush=True)
+    except OSError:
+        pass
 
 
 def _append_capped(path: Path, line: str, cap_bytes: int, lock: threading.Lock) -> None:
@@ -104,7 +121,13 @@ def mmr_log(message: str) -> None:
 
 def stats_log(message: str) -> None:
     """Client TCP Stats API — format simple, sans mise en forme (reconnexions, etc.)."""
-    print(f"[stats] {message}", file=sys.stderr, flush=True)
+    err = _stderr()
+    if err is None:
+        return
+    try:
+        print(f"[stats] {message}", file=err, flush=True)
+    except OSError:
+        pass
 
 
 def api_dump(event: str, data: dict) -> None:

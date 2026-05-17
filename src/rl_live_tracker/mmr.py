@@ -5,8 +5,10 @@ import json
 import queue
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -170,18 +172,27 @@ class MMRClient(QObject):
         self._queue: "queue.Queue[tuple[str, str, str]]" = queue.Queue()
         self._inflight: set[str] = set()
         self._stop = threading.Event()
+        self._started = False
         self._thread = threading.Thread(target=self._worker, daemon=True, name="MMRFetcher")
+        self._curl_requests: Any = None
         try:
-            from curl_cffi import requests as _curl_requests  # noqa
-            self._requests = _curl_requests
-            mmr_log(f"init enabled={self._enabled} ttl={self._ttl}s "
-                    f"cache_entries={len(self._cache)} curl_cffi=ok")
+            from curl_cffi import requests as _curl_requests  # noqa: PLC0415
+
+            self._curl_requests = _curl_requests
+            mmr_log(
+                f"init enabled={self._enabled} ttl={self._ttl}s "
+                f"cache_entries={len(self._cache)} curl_cffi=ok"
+            )
         except ImportError as e:
-            self._requests = None
-            mmr_log(f"init curl_cffi MISSING ({e}). pip install curl_cffi")
+            warn_log(f"curl_cffi missing ({e}) — MMR requests will fail (tracker.gg blocks urllib)")
+            mmr_log(
+                f"init enabled={self._enabled} ttl={self._ttl}s "
+                f"cache_entries={len(self._cache)} curl_cffi=MISSING"
+            )
 
     def start(self) -> None:
-        if not self._thread.is_alive():
+        if not self._started:
+            self._started = True
             self._thread.start()
             mmr_log("worker thread started")
 
@@ -195,7 +206,7 @@ class MMRClient(QObject):
             mmr_log(f"set_enabled {prev} -> {self._enabled}")
 
     def is_enabled(self) -> bool:
-        return self._enabled and self._requests is not None
+        return self._enabled and self._curl_requests is not None
 
     def get(self, key: str) -> Optional[dict]:
         with self._cache_lock:
@@ -220,7 +231,7 @@ class MMRClient(QObject):
         if not self._enabled:
             mmr_log(f"enqueue skip {key!r}: disabled")
             return
-        if self._requests is None:
+        if self._curl_requests is None:
             mmr_log(f"enqueue skip {key!r}: curl_cffi missing")
             return
         if key in self._inflight:
@@ -270,16 +281,43 @@ class MMRClient(QObject):
                 self._inflight.discard(key)
             last_request = time.monotonic()
 
+    def _http_get(self, url: str) -> tuple[int, bytes]:
+        if self._curl_requests is not None:
+            r = self._curl_requests.get(
+                url,
+                headers=self._HEADERS,
+                impersonate="chrome120",
+                timeout=15,
+            )
+            return int(r.status_code), bytes(r.content)
+
+        headers = dict(self._HEADERS)
+        headers["User-Agent"] = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return int(resp.getcode()), resp.read()
+        except urllib.error.HTTPError as e:
+            body = b""
+            try:
+                body = e.read()
+            except Exception:
+                pass
+            return int(e.code), body
+
     def _fetch_one(self, key: str, plat: str, ident: str) -> None:
-        if self._requests is None:
+        if self._curl_requests is None:
             return
         url = self._BASE_URL.format(plat=plat, ident=ident)
         mmr_log(f"GET {url}")
         t0 = time.monotonic()
-        r = self._requests.get(url, headers=self._HEADERS, impersonate="chrome120", timeout=15)
+        status, raw = self._http_get(url)
         dt = (time.monotonic() - t0) * 1000
-        mmr_log(f"  -> HTTP {r.status_code} in {dt:.0f}ms")
-        if r.status_code == 404:
+        mmr_log(f"  -> HTTP {status} in {dt:.0f}ms")
+        if status == 404:
             with self._cache_lock:
                 self._cache[key] = {
                     "fetched_at": now_iso(),
@@ -289,12 +327,14 @@ class MMRClient(QObject):
                 save_mmr_cache(self._cache)
             self.updated.emit(key)
             return
-        if r.status_code != 200:
-            mmr_log(f"  {key!r} HTTP {r.status_code}")
+        if status != 200:
+            mmr_log(f"  {key!r} HTTP {status}")
+            if status == 403:
+                warn_log("tracker.gg returned 403 — install curl_cffi (pip install curl_cffi)")
             return
         try:
-            payload = r.json()
-        except ValueError as e:
+            payload = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
             mmr_log(f"  {key!r} bad JSON: {e}")
             return
         data = (payload or {}).get("data")

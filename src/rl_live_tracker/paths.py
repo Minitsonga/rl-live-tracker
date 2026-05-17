@@ -8,7 +8,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+_APP_NAME = "RLLiveTracker"
+
+
+def app_root() -> Path:
+    """Racine données utilisateur (dev : repo ; frozen : %LocalAppData%\\RLLiveTracker)."""
+    if getattr(sys, "frozen", False):
+        base = Path(
+            os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+        )
+        root = base / _APP_NAME
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT_DIR = app_root()
 DATA_DIR = ROOT_DIR / "data"
 LOG_DIR = ROOT_DIR / "logs"
 
