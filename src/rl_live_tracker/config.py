@@ -139,6 +139,15 @@ DEFAULT_CONFIG = {
     "last_dismissed_version": "",
     # Démarrer avec Windows (HKCU Run) — désactivé par défaut.
     "launch_at_windows_startup": False,
+    # Tray : X masque au tray si true (défaut false = quit complet).
+    "close_to_tray": False,
+    "start_minimized_to_tray": False,
+    "tray_minimize_prompt_done": False,
+    "tray_close_prompt_done": False,
+    # Après onboarding : minimize → quit si true, sinon hide tray.
+    "minimize_quits_app": False,
+    # Après onboarding close (si close_to_tray false) : quit par défaut si true.
+    "tray_close_default_quit": True,
 }
 
 
@@ -230,6 +239,12 @@ def _migrate_loaded(cfg: dict, loaded: Optional[dict]) -> bool:
         ("check_updates_on_startup", True),
         ("last_dismissed_version", ""),
         ("launch_at_windows_startup", False),
+        ("close_to_tray", False),
+        ("start_minimized_to_tray", False),
+        ("tray_minimize_prompt_done", False),
+        ("tray_close_prompt_done", False),
+        ("minimize_quits_app", False),
+        ("tray_close_default_quit", True),
     ):
         if key not in loaded:
             cfg[key] = default
