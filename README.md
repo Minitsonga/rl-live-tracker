@@ -21,13 +21,30 @@ Port=49123
 
 Restart Rocket League after editing this file.
 
+## Repository layout
+
+```
+rl-live-tracker/
+  .github/workflows/   # CI and release (Windows installer on version tags)
+  docs/dev/            # overlay HTML design references (not shipped)
+  packaging/           # PyInstaller spec, Inno Setup, build.ps1, prune_bundle.ps1
+  src/rl_live_tracker/ # application code
+  tests/
+  config.example.json  # optional template for data/config.json
+  pyproject.toml       # dependencies and version (single source of truth)
+  start.bat            # quick dev launch
+```
+
+Generated locally (gitignored): `build/`, `dist/`, `*.egg-info/`, `.venv/`.
+
 ## Installation
 
 ### Windows installer (recommended)
 
-1. Download **`RLLiveTracker-Setup-x.y.z.exe`** from [GitHub Releases](https://github.com/Minitsonga/rl-live-tracker/releases) (available from **v1.0.0** onward; beta tags ship source ZIP only).
-2. Run the installer (per-user, no admin required). Optional: desktop shortcut, launch after install, **Start with Windows** (off by default).
-3. Config and logs live under `%LocalAppData%\RLLiveTracker\` (`data\`, `logs\`).
+1. Download **`RL-LiveTracker-Setup.exe`** from [GitHub Releases](https://github.com/Minitsonga/rl-live-tracker/releases) (from **v1.0.0** onward; beta tags ship source ZIP only).
+2. Run the installer (per-user, no admin required). Choose or create a folder under `%LocalAppData%` (default: `%LocalAppData%\RLLiveTracker\`).
+3. Optional: desktop shortcut, launch after install, **Start with Windows** (off by default).
+4. Config and logs live under `%LocalAppData%\RLLiveTracker\` (`data\`, `logs\`) — separate from the program folder.
 
 **SmartScreen / antivirus:** unsigned PyInstaller builds may show “unknown publisher” or a false positive. Use **More info → Run anyway** if you trust the release, or run from source below.
 
@@ -35,7 +52,7 @@ Restart Rocket League after editing this file.
 
 ```powershell
 cd rl-live-tracker
-python -m pip install -r requirements.txt
+python -m pip install -e ".[dev]"
 ```
 
 ### Build the installer locally
@@ -46,19 +63,24 @@ Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php):
 .\packaging\build.ps1
 ```
 
-Output: `dist\RLLiveTracker\` (portable folder) and `dist\RLLiveTracker-Setup-*.exe`.
+Output:
+
+- `dist\RLLiveTracker\` — portable folder (`RLLiveTracker.exe` + `runtime\`)
+- `dist\RL-LiveTracker-Setup.exe` — installer (target installed size ≤ ~50 MB after prune; see size note below)
+
+Size report: `build\size-report.txt` (gitignored).
 
 ## Dev quality checks
 
 ```powershell
-python -m pip install pre-commit pytest ruff
+pip install -e ".[dev]"
 pre-commit install
 pre-commit run --all-files
 $env:PYTHONPATH = "$PWD\src"; pytest -q
 ```
 
 CI runs the same checks on `dev`, `staging`, and `main` pushes and on PRs targeting `staging`/`main`.
-Pushing a version tag (example: `v1.0.0`) runs the Release workflow: GitHub release notes, source archive, and Windows **Setup.exe** when the Windows build job succeeds.
+Pushing a version tag (example: `v1.0.0`) runs the Release workflow: GitHub release notes, source archive, and Windows **RL-LiveTracker-Setup.exe** when the Windows build job succeeds.
 
 Pre-release example: `v1.0-beta.2` (sources only, no installer).
 
@@ -70,21 +92,35 @@ $env:PYTHONPATH = "$PWD\src"; python -m rl_live_tracker
 
 Or double-click `start.bat`.
 
-A tray icon appears near the clock (display shortcuts, network MMR, data folder, **About**, **Check for updates**, etc.).
+On start, the **app window** opens unless **Start minimized to tray** is enabled in **Settings**. The app always lives in the system tray while running.
 
-When Rocket League is **not** running, the app stays in **idle** mode (no Stats API TCP retries, slower timers) to reduce CPU and network use. Launch the tracker when you play, or enable **Start with Windows** in F5 if you want it in the tray before RL starts.
+When Rocket League is **not** running, the app stays in **idle** mode (no Stats API TCP retries, slower timers). Launch the tracker when you play, or enable **Run on startup** under **Settings**.
 
-## Settings (F5)
+### Installed size vs BakkesMod
 
-Press **F5** to open/close the centered settings panel (mouse-friendly):
+The Windows build bundles **Python 3.12 + Qt (PySide6)** (~40–50 MB installed after pruning). Tools like BakkesMod (~20 MB) are native C++ plugins without a Python/Qt runtime. A similar footprint would require a different technology stack, not just smaller packaging.
 
-- **Display**: session card (W/L), lobby roster, and in-game MMR visibility in overlays.
-- **Position - session / roster**: four screen corners (**◤ TL**, **◥ TR**, **◣ BL**, **◢ BR**) or **Custom** (manual coordinates).
-- **Drag to reposition...**: enables moving both overlays with the mouse; click **Finish dragging** to save the position. Both anchors switch to **Custom** and are saved into `data/config.json`.
+## App window, overlay settings, and tray
 
-**Esc** or **F5** closes the panel. If dragging is active, positions are saved on close.
+| Action | Behavior |
+|--------|----------|
+| **Tray → Open** / double-click tray | Show app window (status + menus) |
+| **Tray → Check for updates** | Windows Yes/No dialog if an update exists |
+| **Tray → Quit** | Exit completely |
+| **F5** | Toggle **overlay settings** panel (in-game layout; not the app window) |
+| **Minimize app window** | First time: choose **Quit**, **Hide to tray**, or **Cancel**; then tray or quit per your choice / Settings |
+| **Close app window (X)** | Default: **quit** the application. Enable **Close to system tray** in Settings (or pick **Hide to tray** on first close) to keep running |
+| **File → Exit** / **Tray → Quit** | Exit completely |
 
-By default, only one global hotkey is enabled: `menu_toggle_hotkeys` -> `["f5"]`. The lists `toggle_hotkeys`, `roster_toggle_hotkeys`, `mmr_tracker_toggle_hotkeys`, and `mmr_ingame_toggle_hotkeys` are empty, so you can add extra shortcuts if needed (avoid collisions with **F5**).
+Overlay settings (visibility, themes, screen corners, drag mode) are separate from the app window — dark panel opened with **F5**.
+
+- **Display**: session card (W/L), lobby roster, in-game MMR in overlays.
+- **Position**: four corners or **Custom**; **Drag overlays** saves custom coordinates to `data/config.json`.
+- **Esc** or **F5** closes the overlay settings panel (does not quit the app).
+
+**Session stats (W/L, MMR cumulative on the session card):** only matches that end with an official **MatchEnded** event are counted. Lobbies cancelled before the game starts (e.g. a player failed to connect, **MatchDestroyed** without **MatchEnded**) are ignored. When you **close Rocket League**, the overlay session (W/L, streaks, session MMR total) is reset for the next play session.
+
+Overlays still respect `require_rl_focus` when RL is not in the foreground (overlay settings panel can stay open).
 
 ## Configuration
 
@@ -92,15 +128,17 @@ By default, only one global hotkey is enabled: `menu_toggle_hotkeys` -> `["f5"]`
 
 - `self_player_id`: auto-filled after a **1v1** match; otherwise set your local player key manually as `Platform|Uid`.
 - `position_session_anchor` / `position_roster_anchor`: `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `custom` with `position_*_custom_xy` `[x, y]`.
-- `show_session_overlay`, `show_roster_overlay`, `show_mmr_ingame`: persisted state for F5 panel toggles.
-- `roster_visible_default`: only used to migrate legacy configs into `show_roster_overlay`.
+- `show_session_overlay`, `show_roster_overlay`, `show_mmr_ingame`: persisted overlay visibility.
 - `idle_when_rl_closed`: pause Stats API when `RocketLeague.exe` is absent (default `true`).
-- `check_updates_on_startup`: optional GitHub Releases check (default `true`, non-blocking).
-- `launch_at_windows_startup`: HKCU Run entry (default `false`).
+- `check_updates_on_startup`: optional GitHub Releases check (default `true`; also in **Settings**).
+- `launch_at_windows_startup`: HKCU Run entry (default `false`; **Settings → Run on startup**).
+- `close_to_tray`: when `true`, the window **X** hides to the tray instead of quitting (default `false`).
+- `start_minimized_to_tray`: start without showing the app window (default `false`).
+- `tray_minimize_prompt_done` / `tray_close_prompt_done`: first-run tray dialogs (managed automatically).
 
 ## First-time config template
 
-This repository includes `config.example.json`. Copy it to `data/config.json` before first run if you want to preconfigure values.
+Copy `config.example.json` to `data/config.json` before first run if you want to preconfigure values.
 
 ## Local runtime data
 
