@@ -1,8 +1,17 @@
-from rl_live_tracker.session_state import SessionState
+from rl_live_tracker.session_state import SessionState, session_mmr_from_entry
 
 
 def _entry(mmr_2v2: int) -> dict:
     return {"playlists": {"2v2": {"mmr": mmr_2v2}}}
+
+
+def test_session_mmr_prefers_active_playlist_then_best() -> None:
+    entry = {
+        "playlists": {"2v2": {"mmr": 1100}, "3v3": {"mmr": 1400}},
+        "best": {"mmr": 1400, "playlist": "3v3"},
+    }
+    assert session_mmr_from_entry(entry, "2v2") == 1100
+    assert session_mmr_from_entry(entry, "other") == 1100
 
 
 def test_post_match_reliable_baseline_updates_last_and_total() -> None:

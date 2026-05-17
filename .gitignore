@@ -1,4 +1,7 @@
 __pycache__/
+build/
+build/size-report.txt
+dist/
 *.egg-info/
 *.py[cod]
 .venv/

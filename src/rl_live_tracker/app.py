@@ -2,16 +2,25 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import re
 import sys
+import subprocess
 import threading
 from typing import Any, Callable, Optional
 
-from PySide6.QtCore import QLockFile, QObject, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
+from PySide6.QtCore import QLockFile, QObject, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QMenu,
+    QMessageBox,
+    QSystemTrayIcon,
+    QWidget,
+)
 
+from . import __version__
+from .autostart import is_autostart_enabled, set_autostart_enabled
 from .config import apply_theme_preset, load_config, save_config
 from .focus_rl import (
     is_hwnd_foreground,
@@ -26,12 +35,25 @@ from .render_roster import (
     roster_overlay_empty_html,
 )
 from .render_session import render_session_html
-from .menu_overlay import MenuPanel
+from .hub_window import InjectorWindow
+from .overlay_settings_dialog import OverlaySettingsDialog
+from .stats_api_help_dialog import StatsApiHelpDialog
 from .overlay_widgets import TransparentOverlay
 from .session_state import SessionState, mmr_for_playlist
 from .stats_client import StatsClient
 from .storage import append_match
+from .updates import ReleaseInfo, check_for_update
+from .tray_prefs import (
+    TrayWindowAction,
+    apply_close_choice,
+    apply_minimize_choice,
+    resolve_close_action,
+    resolve_minimize_action,
+)
 from .applog import app_log, event_log, mmr_log, warn_log
+
+_TIMER_ACTIVE_MS = 450
+_TIMER_IDLE_MS = 5000
 
 
 def _arena_readable(arena: str, max_len: int = 42) -> str:
@@ -111,6 +133,17 @@ def _start_hotkeys_merged(mapping: dict[str, Callable[[], None]]) -> None:
     threading.Thread(target=runner, daemon=True, name="Hotkeys").start()
 
 
+class _UpdateCheckThread(QThread):
+    finished = Signal(object, object)  # bool | None, ReleaseInfo | None
+
+    def run(self) -> None:
+        try:
+            newer, info = check_for_update()
+            self.finished.emit(newer, info)
+        except Exception:
+            self.finished.emit(None, None)
+
+
 class AppController(QObject):
     refresh_requested = Signal()
     # Émis depuis le thread pynput : le slot s'exécute sur le thread Qt (GUI).
@@ -124,7 +157,7 @@ class AppController(QObject):
             "roster": [],
             "in_match": False,
         }
-        # True après MatchEnded traité ; si MatchDestroyed sans fin, on compte une défaite (quit / replay).
+        # True après MatchEnded traité ; MatchDestroyed sans fin ne compte pas en W/L.
         self._match_outcome_recorded = True
         self.post_pending = {
             "active": False,
@@ -154,8 +187,10 @@ class AppController(QObject):
         self.overlay_session.positionCommitted.connect(lambda: self._on_overlay_position_committed("session"))
         self.overlay_roster.positionCommitted.connect(lambda: self._on_overlay_position_committed("roster"))
 
-        self._menu = MenuPanel(self.cfg)
-        self._wire_menu_signals()
+        self._injector = InjectorWindow()
+        self._overlay_settings = OverlaySettingsDialog(self.cfg)
+        self._wire_injector_signals()
+        self._wire_overlay_settings_signals()
 
         self.mmr_client = MMRClient(enabled=bool(self.cfg.get("mmr_enabled", True)))
         self.mmr_client.start()
@@ -189,6 +224,9 @@ class AppController(QObject):
         )
         self._rl_process_poll_i = 0
         self._rl_process_poll_every = 4  # 4 × 450 ms ≈ 1.8 s
+        self._rl_runtime_active = True
+        self._update_thread: Optional[_UpdateCheckThread] = None
+        self._stats_api_help: Optional[StatsApiHelpDialog] = None
 
         self.refresh_requested.connect(self._do_refresh)
         self.menu_toggle_requested.connect(self._toggle_menu)
@@ -200,20 +238,33 @@ class AppController(QObject):
         self._setup_hotkeys()
         self._do_refresh()
         self._focus_timer = QTimer(self)
-        self._focus_timer.setInterval(450)
+        self._focus_timer.setInterval(_TIMER_ACTIVE_MS)
         self._focus_timer.timeout.connect(self._on_focus_tick)
         self._focus_timer.start()
-        app_log("Ready — F5 hotkey · tray icon by the clock")
+        if sys.platform == "win32" and bool(self.cfg.get("idle_when_rl_closed", True)):
+            self._rl_runtime_active = rocket_league_process_running()
+            if not self._rl_runtime_active:
+                self._apply_idle_runtime(silent=True)
+            else:
+                self._apply_active_runtime(silent=True)
+        self._sync_autostart_from_registry()
+        if bool(self.cfg.get("check_updates_on_startup", True)):
+            QTimer.singleShot(8000, self._check_updates_startup)
+        self._sync_injector_settings_menu()
+        self._refresh_injector_status()
+        if not bool(self.cfg.get("start_minimized_to_tray")):
+            self._injector.show_injector()
+        app_log("Ready — F5 overlay settings · tray opens app window")
 
     def _user_focus_in_settings_panel(self) -> bool:
         """True si l'utilisateur interagit encore avec le menu (sinon ex. Alt+Tab vers une autre app)."""
         if self._drag_mode:
             return True
-        if self._menu.isActiveWindow():
+        if self._overlay_settings.isActiveWindow():
             return True
         w: Optional[QWidget] = QApplication.focusWidget()
         while w is not None:
-            if w is self._menu:
+            if w is self._overlay_settings:
                 return True
             w = w.parentWidget()
         return False
@@ -226,7 +277,7 @@ class AppController(QObject):
         if sys.platform != "win32":
             return self._user_focus_in_settings_panel()
         try:
-            wid = int(self._menu.effectiveWinId())
+            wid = int(self._overlay_settings.effectiveWinId())
             menu_fg = is_hwnd_foreground(wid) if wid else self._user_focus_in_settings_panel()
         except Exception:
             menu_fg = self._user_focus_in_settings_panel()
@@ -240,7 +291,7 @@ class AppController(QObject):
             allow = is_rocket_league_foreground()
 
         # Bureau / autre app : la fenêtre active n'est ni RL ni le menu → masquer les overlays.
-        if self._menu.isVisible() and not self._preview_ok_while_menu_open():
+        if self._overlay_settings.isVisible() and not self._preview_ok_while_menu_open():
             if self._drag_mode:
                 if self._visibility["session"]:
                     self.overlay_session.show()
@@ -259,7 +310,7 @@ class AppController(QObject):
 
         if not allow:
             # Le menu F5 est ouvert : RL n'a souvent plus le focus (fenêtre Qt au 1er plan).
-            if self._menu.isVisible():
+            if self._overlay_settings.isVisible():
                 if self._drag_mode:
                     if self._visibility["session"]:
                         self.overlay_session.show()
@@ -315,76 +366,412 @@ class AppController(QObject):
             self.overlay_roster.hide()
 
     def _on_focus_tick(self) -> None:
+        self._sync_rl_runtime_mode()
         self._sync_overlay_visibility()
         self._rl_process_poll_i += 1
         if self._rl_process_poll_i >= self._rl_process_poll_every:
             self._rl_process_poll_i = 0
             self._watch_rl_process_exit()
 
+    def _sync_rl_runtime_mode(self) -> None:
+        if sys.platform != "win32" or not bool(self.cfg.get("idle_when_rl_closed", True)):
+            return
+        running = rocket_league_process_running()
+        if running == self._rl_runtime_active:
+            return
+        self._rl_runtime_active = running
+        if running:
+            self._apply_active_runtime()
+        else:
+            self._apply_idle_runtime()
+
+    def _apply_idle_runtime(self, *, silent: bool = False) -> None:
+        self.stats.pause()
+        self._focus_timer.setInterval(_TIMER_IDLE_MS)
+        self._rl_process_poll_every = 1
+        if self._tray is not None:
+            self._tray.setToolTip("RL Live Tracker — waiting for Rocket League")
+        self.overlay_session.hide()
+        self.overlay_roster.hide()
+        self._refresh_injector_status()
+        if not silent:
+            app_log("Idle — Rocket League not running", dim=True)
+
+    def _apply_active_runtime(self, *, silent: bool = False) -> None:
+        self.stats.resume()
+        self._focus_timer.setInterval(_TIMER_ACTIVE_MS)
+        self._rl_process_poll_every = 4
+        if self._tray is not None:
+            self._tray.setToolTip("RL Live Tracker")
+        self._seed_mmr_from_cache()
+        self._sync_overlay_visibility()
+        self._refresh_injector_status()
+        if not silent:
+            app_log("Active — Rocket League detected")
+
+    def _refresh_injector_status(self) -> None:
+        if sys.platform == "win32" and bool(self.cfg.get("idle_when_rl_closed", True)):
+            if not self._rl_runtime_active:
+                self._injector.set_status_message("Waiting for Rocket League.")
+            else:
+                self._injector.set_status_message("Rocket League is running.")
+        elif rocket_league_process_running():
+            self._injector.set_status_message("Rocket League is running.")
+        else:
+            self._injector.set_status_message("Waiting for Rocket League.")
+
+    def _sync_autostart_from_registry(self) -> None:
+        if sys.platform != "win32":
+            return
+        reg = is_autostart_enabled()
+        cfg_val = bool(self.cfg.get("launch_at_windows_startup"))
+        if reg != cfg_val:
+            self.cfg["launch_at_windows_startup"] = reg
+            save_config(self.cfg)
+
+    def _sync_injector_settings_menu(self) -> None:
+        self._injector.set_tray_settings_checked(
+            close_to_tray=bool(self.cfg.get("close_to_tray")),
+            start_minimized=bool(self.cfg.get("start_minimized_to_tray")),
+            check_updates_on_startup=bool(self.cfg.get("check_updates_on_startup", True)),
+            autostart=bool(self.cfg.get("launch_at_windows_startup")),
+        )
+
+    def _on_menu_autostart_toggled(self, checked: bool) -> None:
+        ok = set_autostart_enabled(bool(checked))
+        if not ok and checked:
+            warn_log("Could not enable Windows autostart")
+            return
+        self.cfg["launch_at_windows_startup"] = bool(checked)
+        save_config(self.cfg)
+        self._injector.set_autostart_checked(bool(checked))
+
+    def _on_menu_close_to_tray_toggled(self, checked: bool) -> None:
+        self.cfg["close_to_tray"] = bool(checked)
+        save_config(self.cfg)
+
+    def _on_menu_start_minimized_toggled(self, checked: bool) -> None:
+        self.cfg["start_minimized_to_tray"] = bool(checked)
+        save_config(self.cfg)
+
+    def _on_menu_check_updates_startup_toggled(self, checked: bool) -> None:
+        self.cfg["check_updates_on_startup"] = bool(checked)
+        save_config(self.cfg)
+
+    def _prompt_tray_minimize(self) -> TrayWindowAction:
+        box = QMessageBox(self._injector)
+        box.setWindowTitle("RL Live Tracker")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("The window will be hidden.")
+        box.setInformativeText(
+            "Quit the application completely, or keep it running in the system tray?"
+        )
+        quit_btn = box.addButton("Quit", QMessageBox.ButtonRole.DestructiveRole)
+        hide_btn = box.addButton("Hide to tray", QMessageBox.ButtonRole.AcceptRole)
+        cancel_btn = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(hide_btn)
+        cb = QCheckBox("Don't ask again")
+        box.setCheckBox(cb)
+        box.exec()
+        clicked = box.clickedButton()
+        remember = cb.isChecked()
+        if clicked == quit_btn:
+            action = TrayWindowAction.QUIT
+        elif clicked == hide_btn:
+            action = TrayWindowAction.HIDE
+        else:
+            action = TrayWindowAction.CANCEL
+        apply_minimize_choice(self.cfg, action, remember=remember)
+        if remember:
+            save_config(self.cfg)
+            self._sync_injector_settings_menu()
+        return action
+
+    def _prompt_tray_close(self) -> TrayWindowAction:
+        box = QMessageBox(self._injector)
+        box.setWindowTitle("RL Live Tracker")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("Close the application?")
+        box.setInformativeText(
+            "Closing the window will exit RL Live Tracker completely.\n"
+            "You can hide it to the system tray instead and keep overlays running."
+        )
+        quit_btn = box.addButton(
+            "Quit application", QMessageBox.ButtonRole.DestructiveRole
+        )
+        hide_btn = box.addButton("Hide to tray", QMessageBox.ButtonRole.AcceptRole)
+        cancel_btn = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(quit_btn)
+        cb = QCheckBox("Don't ask again")
+        box.setCheckBox(cb)
+        box.exec()
+        clicked = box.clickedButton()
+        remember = cb.isChecked()
+        if clicked == quit_btn:
+            action = TrayWindowAction.QUIT
+        elif clicked == hide_btn:
+            action = TrayWindowAction.HIDE
+        else:
+            action = TrayWindowAction.CANCEL
+        apply_close_choice(self.cfg, action, remember=remember)
+        if remember:
+            save_config(self.cfg)
+            self._sync_injector_settings_menu()
+        return action
+
+    def _on_injector_minimize_requested(self) -> None:
+        action = resolve_minimize_action(self.cfg)
+        if action is None:
+            action = self._prompt_tray_minimize()
+        if action == TrayWindowAction.CANCEL:
+            self._injector.cancel_pending_minimize()
+            return
+        if action == TrayWindowAction.QUIT:
+            self.app.quit()
+            return
+        self._injector.hide_to_tray()
+
+    def _on_injector_close_requested(self) -> None:
+        action = resolve_close_action(self.cfg)
+        if action is None:
+            action = self._prompt_tray_close()
+        if action == TrayWindowAction.CANCEL:
+            return
+        if action == TrayWindowAction.HIDE:
+            self._injector.hide_to_tray()
+            return
+        self.app.quit()
+
+    def _check_updates_startup(self) -> None:
+        dismissed = str(self.cfg.get("last_dismissed_version") or "")
+        if dismissed and dismissed == __version__:
+            return
+        self._run_update_check(notify_if_current=False)
+
+    def _run_update_check(self, *, notify_if_current: bool = True) -> None:
+        if self._update_thread is not None and self._update_thread.isRunning():
+            return
+        self._update_thread = _UpdateCheckThread(self)
+        self._update_thread.finished.connect(
+            lambda newer, info: self._on_update_check_done(newer, info, notify_if_current)
+        )
+        self._update_thread.start()
+
+    def _on_update_check_done(
+        self,
+        newer: object,
+        info: object,
+        notify_if_current: bool,
+    ) -> None:
+        if newer is None:
+            return
+        if not isinstance(info, ReleaseInfo):
+            return
+        if newer is True:
+            dismissed = str(self.cfg.get("last_dismissed_version") or "")
+            if dismissed != info.version:
+                box = QMessageBox(self._injector)
+                box.setWindowTitle("RL Live Tracker")
+                box.setIcon(QMessageBox.Icon.Question)
+                box.setText("An update is available:")
+                body = (info.body or "").strip()
+                if body:
+                    box.setInformativeText(
+                        f"{info.tag_name}\n\n{body[:400]}".strip()
+                    )
+                else:
+                    box.setInformativeText(
+                        f"{info.tag_name}\n\nYou are running v{__version__}."
+                    )
+                box.setStandardButtons(
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                box.setDefaultButton(QMessageBox.StandardButton.Yes)
+                if box.exec() == QMessageBox.StandardButton.Yes:
+                    QDesktopServices.openUrl(info.html_url)
+                else:
+                    self.cfg["last_dismissed_version"] = info.version
+                    save_config(self.cfg)
+        else:
+            if notify_if_current:
+                QMessageBox.information(
+                    self._injector,
+                    "RL Live Tracker",
+                    f"You are on the latest release (v{__version__}).",
+                )
+
     def _watch_rl_process_exit(self) -> None:
         if sys.platform != "win32":
             return
         ok = rocket_league_process_running()
         if self._rl_was_running and not ok:
-            self.session.reset_counters()
-            event_log("Session counters reset (Rocket League closed)", tag="session")
-            self.refresh_requested.emit()
+            self._reset_session_for_rl_exit()
         self._rl_was_running = ok
 
-    def _settings_menu_allowed(self) -> bool:
-        if not self.cfg.get("require_rl_focus"):
-            return True
-        return is_rocket_league_foreground()
+    def _clear_post_pending(self) -> None:
+        self.post_pending["active"] = False
+        self.post_pending["baseline_lu"] = ""
+        self.post_pending["playlist"] = ""
+        self.post_pending["baseline_mmr"] = None
+        self.post_pending["baseline_reliable"] = False
 
-    def _notify_settings_need_rl_focus(self) -> None:
-        if self._tray is not None:
-            self._tray.showMessage(
-                "RL Live Tracker",
-                "Open settings (F5) while Rocket League is in the foreground.",
-                QSystemTrayIcon.MessageIcon.Information,
-                4500,
-            )
-        else:
-            warn_log("Settings (F5): bring Rocket League to the foreground to open the menu.")
+    def _reset_session_for_rl_exit(self) -> None:
+        self.session.reset_session()
+        self._clear_post_pending()
+        self.state["in_match"] = False
+        self.state["roster"] = []
+        self._match_outcome_recorded = True
+        self._last_lobby_sig = None
+        event_log("Session reset (Rocket League closed)", tag="session")
+        self.refresh_requested.emit()
 
-    def _try_present_settings_menu(self) -> bool:
-        if not self._settings_menu_allowed():
-            self._notify_settings_need_rl_focus()
-            return False
-        self._menu.present(
+    def _open_injector(self) -> None:
+        self._sync_injector_settings_menu()
+        self._refresh_injector_status()
+        self._injector.show_injector()
+
+    def _open_overlay_settings(self) -> None:
+        if not self._overlay_settings_allowed():
+            self._notify_overlay_settings_need_rl_focus()
+            return
+        self._overlay_settings.present(
             self._visibility["session"],
             self._visibility["roster"],
             bool(self.cfg.get("show_mmr_ingame", True)),
             self._lobby_preview_enabled,
         )
-        return True
+
+    def _overlay_settings_allowed(self) -> bool:
+        if not self.cfg.get("require_rl_focus"):
+            return True
+        return is_rocket_league_foreground()
+
+    def _notify_overlay_settings_need_rl_focus(self) -> None:
+        if self._tray is not None:
+            self._tray.showMessage(
+                "RL Live Tracker",
+                "Open overlay settings (F5) while Rocket League is in the foreground.",
+                QSystemTrayIcon.MessageIcon.Information,
+                4500,
+            )
+        else:
+            warn_log("Overlay settings (F5): bring Rocket League to the foreground.")
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self._injector,
+            "About RL Live Tracker",
+            f"<b>RL Live Tracker</b><br>"
+            f"Version {__version__}<br><br>"
+            f"Data folder:<br><code>{DATA_DIR}</code><br><br>"
+            f'<a href="https://github.com/Minitsonga/rl-live-tracker">GitHub</a>',
+        )
+
+    def _show_stats_api_help(self) -> None:
+        if self._stats_api_help is None:
+            self._stats_api_help = StatsApiHelpDialog(self.cfg, self._injector)
+        self._stats_api_help.refresh()
+        self._stats_api_help.show()
+        self._stats_api_help.raise_()
+        self._stats_api_help.activateWindow()
+
+    def _open_data_folder(self) -> None:
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(DATA_DIR))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(DATA_DIR)])
+        except Exception as e:
+            warn_log(f"open data folder: {e}")
 
     def _seed_mmr_from_cache(self) -> None:
         sid = self.cfg.get("self_player_id")
         if not sid:
             return
-        e = self.mmr_client.get(sid)
-        if e and not e.get("not_found"):
-            b = e.get("best") or {}
-            if b.get("mmr") is not None:
-                self.session.current_mmr = int(b["mmr"])
+        self._apply_self_mmr_from_cache(sid)
+
+    def _apply_self_mmr_from_cache(self, player_key: str) -> None:
+        """Même logique qu'avant la refonte : mode actif TRN, sinon best (comme au démarrage)."""
+        entry = self.mmr_client.get(player_key)
+        if not entry or entry.get("not_found"):
+            return
+        pl = self.session.active_playlist
+        m = mmr_for_playlist(entry, pl)
+        if m is None:
+            best = entry.get("best") or {}
+            if best.get("mmr") is not None:
+                m = int(best["mmr"])
+        if m is not None:
+            self.session.current_mmr = m
+
+    def _sync_session_mmr_from_cache(self) -> None:
+        """Rafraîchit le MMR session depuis le cache (comme le lobby lit _mmr_db à chaque frame)."""
+        if not bool(self.cfg.get("show_mmr_ingame", True)):
+            return
+        sid = self.cfg.get("self_player_id")
+        if not sid:
+            return
+        self._apply_self_mmr_from_cache(sid)
+
+    def _ensure_self_player_id(self, payload: dict) -> None:
+        if self.cfg.get("self_player_id"):
+            return
+        local_key = payload.get("localPlayerKey")
+        if isinstance(local_key, str) and local_key:
+            self.cfg["self_player_id"] = local_key
+            save_config(self.cfg)
+            mmr_log(f"auto self_player_id (local)={local_key!r}")
+            event_log(f"Self player detected (local): {local_key!r}", tag="app")
+            return
+        mt = payload.get("myTeam")
+        same = [p for p in payload.get("players") or [] if p.get("team") == mt]
+        if len(same) == 1:
+            self.cfg["self_player_id"] = same[0]["key"]
+            save_config(self.cfg)
+            mmr_log(f"auto self_player_id={self.cfg['self_player_id']!r}")
+            event_log(
+                f"Self player detected: {same[0].get('name', '?')!r}",
+                tag="app",
+            )
 
     def _wire_signals(self) -> None:
         self.stats.match_initialized.connect(self._on_match_initialized)
         self.stats.match_ended.connect(self._on_match_ended)
         self.stats.match_destroyed.connect(self._on_match_destroyed)
 
-    def _wire_menu_signals(self) -> None:
-        self._menu.toggleSession.connect(self._on_menu_toggle_session)
-        self._menu.toggleRoster.connect(self._on_menu_toggle_roster)
-        self._menu.toggleMmr.connect(self._on_menu_toggle_mmr)
-        self._menu.anchorChanged.connect(self._on_menu_anchor)
-        self._menu.themePresetChanged.connect(self._on_menu_theme_preset)
-        self._menu.lobbyPreviewToggled.connect(self._on_menu_lobby_preview_toggled)
-        self._menu.dragRequested.connect(self._on_menu_drag_requested)
-        self._menu.dragFinished.connect(self._on_menu_drag_finished)
-        self._menu.menuClosed.connect(self._sync_tray_from_state)
-        self._menu.rosterMmrPresetChanged.connect(self._on_menu_roster_mmr_preset)
+    def _wire_injector_signals(self) -> None:
+        self._injector.quitRequested.connect(self.app.quit)
+        self._injector.closeRequested.connect(self._on_injector_close_requested)
+        self._injector.minimizeRequested.connect(self._on_injector_minimize_requested)
+        self._injector.checkUpdatesRequested.connect(
+            lambda: self._run_update_check(notify_if_current=True)
+        )
+        self._injector.openDataFolderRequested.connect(self._open_data_folder)
+        self._injector.autostartToggled.connect(self._on_menu_autostart_toggled)
+        self._injector.closeToTrayToggled.connect(self._on_menu_close_to_tray_toggled)
+        self._injector.startMinimizedToTrayToggled.connect(
+            self._on_menu_start_minimized_toggled
+        )
+        self._injector.checkUpdatesOnStartupToggled.connect(
+            self._on_menu_check_updates_startup_toggled
+        )
+        self._injector.aboutRequested.connect(self._show_about)
+        self._injector.statsApiHelpRequested.connect(self._show_stats_api_help)
+
+    def _wire_overlay_settings_signals(self) -> None:
+        self._overlay_settings.toggleSession.connect(self._on_menu_toggle_session)
+        self._overlay_settings.toggleRoster.connect(self._on_menu_toggle_roster)
+        self._overlay_settings.toggleMmr.connect(self._on_menu_toggle_mmr)
+        self._overlay_settings.anchorChanged.connect(self._on_menu_anchor)
+        self._overlay_settings.themePresetChanged.connect(self._on_menu_theme_preset)
+        self._overlay_settings.lobbyPreviewToggled.connect(
+            self._on_menu_lobby_preview_toggled
+        )
+        self._overlay_settings.dragRequested.connect(self._on_menu_drag_requested)
+        self._overlay_settings.dragFinished.connect(self._on_menu_drag_finished)
+        self._overlay_settings.rosterMmrPresetChanged.connect(
+            self._on_menu_roster_mmr_preset
+        )
 
     def _on_menu_roster_mmr_preset(self, preset: str) -> None:
         self.cfg["roster_mmr_preset"] = str(preset).strip().lower()
@@ -395,29 +782,17 @@ class AppController(QObject):
         self._visibility["session"] = bool(checked)
         self.cfg["show_session_overlay"] = bool(checked)
         save_config(self.cfg)
-        if hasattr(self, "_act_sess") and self._act_sess is not None:
-            self._act_sess.blockSignals(True)
-            self._act_sess.setChecked(bool(checked))
-            self._act_sess.blockSignals(False)
         self._do_refresh()
 
     def _on_menu_toggle_roster(self, checked: bool) -> None:
         self._visibility["roster"] = bool(checked)
         self.cfg["show_roster_overlay"] = bool(checked)
         save_config(self.cfg)
-        if hasattr(self, "_act_roster") and self._act_roster is not None:
-            self._act_roster.blockSignals(True)
-            self._act_roster.setChecked(bool(checked))
-            self._act_roster.blockSignals(False)
         self._do_refresh()
 
     def _on_menu_toggle_mmr(self, checked: bool) -> None:
         self.cfg["show_mmr_ingame"] = bool(checked)
         save_config(self.cfg)
-        if hasattr(self, "_act_mmr_ingame") and self._act_mmr_ingame is not None:
-            self._act_mmr_ingame.blockSignals(True)
-            self._act_mmr_ingame.setChecked(bool(checked))
-            self._act_mmr_ingame.blockSignals(False)
         self._do_refresh()
 
     def _on_menu_anchor(self, which: str, anchor: str) -> None:
@@ -448,8 +823,8 @@ class AppController(QObject):
             self.cfg["position_roster_custom_xy"] = [x, y]
             self.cfg["position_roster_anchor"] = "custom"
         save_config(self.cfg)
-        if self._menu.isVisible():
-            self._menu.sync_from_app(
+        if self._overlay_settings.isVisible():
+            self._overlay_settings.sync_from_app(
                 self._visibility["session"],
                 self._visibility["roster"],
                 bool(self.cfg.get("show_mmr_ingame", True)),
@@ -471,8 +846,8 @@ class AppController(QObject):
             self.cfg["position_roster_custom_xy"] = [rx, ry]
             self.cfg["position_roster_anchor"] = "custom"
         save_config(self.cfg)
-        if self._menu.isVisible():
-            self._menu.sync_from_app(
+        if self._overlay_settings.isVisible():
+            self._overlay_settings.sync_from_app(
                 self._visibility["session"],
                 self._visibility["roster"],
                 bool(self.cfg.get("show_mmr_ingame", True)),
@@ -481,28 +856,10 @@ class AppController(QObject):
         self._do_refresh()
 
     def _toggle_menu(self) -> None:
-        if self._menu.isVisible():
-            self._menu.close_menu()
+        if self._overlay_settings.isVisible():
+            self._overlay_settings.close_settings()
             return
-        self._try_present_settings_menu()
-
-    def _sync_tray_from_state(self) -> None:
-        if hasattr(self, "_act_sess") and self._act_sess is not None:
-            self._act_sess.blockSignals(True)
-            self._act_sess.setChecked(self._visibility["session"])
-            self._act_sess.blockSignals(False)
-        if hasattr(self, "_act_roster") and self._act_roster is not None:
-            self._act_roster.blockSignals(True)
-            self._act_roster.setChecked(self._visibility["roster"])
-            self._act_roster.blockSignals(False)
-        if hasattr(self, "_act_mmr_ingame") and self._act_mmr_ingame is not None:
-            self._act_mmr_ingame.blockSignals(True)
-            self._act_mmr_ingame.setChecked(bool(self.cfg.get("show_mmr_ingame", True)))
-            self._act_mmr_ingame.blockSignals(False)
-        if hasattr(self, "_act_drag") and self._act_drag is not None:
-            self._act_drag.blockSignals(True)
-            self._act_drag.setChecked(bool(self._drag_mode))
-            self._act_drag.blockSignals(False)
+        self._open_overlay_settings()
 
     def _on_stats_conn(self, ok: bool) -> None:
         self.session.stats_connected = ok
@@ -514,17 +871,7 @@ class AppController(QObject):
         self.state["roster"] = payload["players"]
         # Ne pas couper le poll post-match du match précédent (sinon delta / cumul perdus).
 
-        if not self.cfg.get("self_player_id"):
-            mt = payload["myTeam"]
-            same = [p for p in payload["players"] if p["team"] == mt]
-            if len(same) == 1:
-                self.cfg["self_player_id"] = same[0]["key"]
-                mmr_log(f"auto self_player_id={self.cfg['self_player_id']!r}")
-                event_log(
-                    f"Self player detected: {same[0].get('name', '?')!r}",
-                    tag="app",
-                )
-                save_config(self.cfg)
+        self._ensure_self_player_id(payload)
 
         sid = self.cfg.get("self_player_id")
         if sid:
@@ -540,6 +887,15 @@ class AppController(QObject):
 
         if self.mmr_client.is_enabled():
             self.mmr_client.enqueue_roster(payload["players"])
+            if sid:
+                for p in payload["players"]:
+                    if p.get("key") == sid:
+                        self.mmr_client.enqueue(
+                            p.get("primaryId") or "",
+                            p.get("name") or "",
+                            force=False,
+                        )
+                        break
 
         keys = tuple(sorted(p.get("key") or "" for p in payload["players"]))
         pl = self.session.active_playlist
@@ -716,19 +1072,18 @@ class AppController(QObject):
             self.post_pending["active"] = False
             self.refresh_requested.emit()
 
-    def _synthetic_aborted_match_loss(self) -> None:
-        """Quit early / replay sans MatchEnded côté app : la partie était en cours → équivalent défaite."""
+    def _on_match_aborted_without_end(self) -> None:
+        """MatchDestroyed sans MatchEnded : lobby annulé / connexion — non compté en W/L."""
         self._match_outcome_recorded = True
-        self.session.on_match_ended_outcome(False)
+        self.session.clear_active_match_baseline()
         event_log(
-            "Match closed without end event — counted as loss (forfeit / quit during replay)",
+            "Match annulé — non compté (pas de fin officielle)",
             tag="session",
         )
-        self.refresh_requested.emit()
 
     def _on_match_destroyed(self) -> None:
         if self.state["in_match"] and not self._match_outcome_recorded:
-            self._synthetic_aborted_match_loss()
+            self._on_match_aborted_without_end()
         self.state["in_match"] = False
         self.state["roster"] = []
         self._last_lobby_sig = None
@@ -746,6 +1101,10 @@ class AppController(QObject):
             if cur and not cur.get("not_found"):
                 ap = self.session.active_playlist
                 m = mmr_for_playlist(cur, ap)
+                if m is None:
+                    best = cur.get("best") or {}
+                    if best.get("mmr") is not None:
+                        m = int(best["mmr"])
                 if m is not None:
                     self.session.current_mmr = m
         self.refresh_requested.emit()
@@ -759,6 +1118,7 @@ class AppController(QObject):
         return out
 
     def _do_refresh(self) -> None:
+        self._sync_session_mmr_from_cache()
         html_sess = render_session_html(
             self.cfg,
             self.session,
@@ -782,14 +1142,10 @@ class AppController(QObject):
 
     def _set_drag_mode(self, enabled: bool) -> None:
         self._drag_mode = bool(enabled)
-        self._menu.set_drag_toggle_state(self._drag_mode)
+        self._overlay_settings.set_drag_toggle_state(self._drag_mode)
         self.overlay_session.set_drag_enabled(self._drag_mode)
         self.overlay_roster.set_drag_enabled(self._drag_mode)
         self._sync_overlay_visibility()
-        if hasattr(self, "_act_drag") and self._act_drag is not None:
-            self._act_drag.blockSignals(True)
-            self._act_drag.setChecked(self._drag_mode)
-            self._act_drag.blockSignals(False)
 
     def _persist_custom_positions_if_needed(self) -> None:
         if str(self.cfg.get("position_session_anchor", "")).lower() == "custom":
@@ -864,117 +1220,35 @@ class AppController(QObject):
 
         menu = QMenu()
 
-        act_settings = QAction("Settings (F5)…", menu)
+        act_open = QAction("Open RL Live Tracker", menu)
+        act_open.triggered.connect(self._open_injector)
 
-        def _open_settings() -> None:
-            self._try_present_settings_menu()
+        act_updates = QAction("Check for updates", menu)
+        def _tray_check_updates() -> None:
+            self._open_injector()
+            self._run_update_check(notify_if_current=True)
 
-        act_settings.triggered.connect(_open_settings)
-
-        act_sess = QAction("Show Stats Tracker", menu)
-        act_sess.setCheckable(True)
-        act_sess.setChecked(self._visibility["session"])
-
-        def _sync_sess(checked: bool) -> None:
-            self._visibility["session"] = bool(checked)
-            self.cfg["show_session_overlay"] = bool(checked)
-            save_config(self.cfg)
-            self._do_refresh()
-
-        act_sess.toggled.connect(_sync_sess)
-
-        act_roster = QAction("Show Lobby Ranks", menu)
-        act_roster.setCheckable(True)
-        act_roster.setChecked(self._visibility["roster"])
-
-        def _sync_roster(checked: bool) -> None:
-            self._visibility["roster"] = bool(checked)
-            self.cfg["show_roster_overlay"] = bool(checked)
-            save_config(self.cfg)
-            self._do_refresh()
-
-        act_roster.toggled.connect(_sync_roster)
-
-        act_mmr = QAction("MMR tracker.network", menu)
-        act_mmr.setCheckable(True)
-        act_mmr.setChecked(self.mmr_client.is_enabled())
-
-        def _mmr_tog(checked: bool) -> None:
-            self.mmr_client.set_enabled(bool(checked))
-            self.cfg["mmr_enabled"] = bool(checked)
-            save_config(self.cfg)
-
-        act_mmr.toggled.connect(_mmr_tog)
-
-        act_mmr_ingame = QAction("Show in-game MMR", menu)
-        act_mmr_ingame.setCheckable(True)
-        act_mmr_ingame.setChecked(bool(self.cfg.get("show_mmr_ingame", True)))
-
-        def _mmr_ingame_tog(checked: bool) -> None:
-            self.cfg["show_mmr_ingame"] = bool(checked)
-            save_config(self.cfg)
-            self._do_refresh()
-
-        act_mmr_ingame.toggled.connect(_mmr_ingame_tog)
-
-        act_drag = QAction("Drag overlays (global)", menu)
-        act_drag.setCheckable(True)
-        act_drag.setChecked(False)
-
-        def _drag_tog(checked: bool) -> None:
-            self._set_drag_mode(bool(checked))
-
-        act_drag.toggled.connect(_drag_tog)
-
-        act_reset = QAction("Reset session counters", menu)
-
-        def _reset() -> None:
-            self.session.reset_counters()
-            event_log("Session counters cleared (tray · manual reset)", tag="session")
-            self._do_refresh()
-
-        act_reset.triggered.connect(_reset)
-
-        act_folder = QAction("Open data folder", menu)
-
-        def _open_folder() -> None:
-            try:
-                if sys.platform == "win32":
-                    os.startfile(str(DATA_DIR))  # type: ignore[attr-defined]
-                else:
-                    subprocess.Popen(["xdg-open", str(DATA_DIR)])
-
-            except Exception as e:
-                warn_log(f"open data folder: {e}")
-
-        act_folder.triggered.connect(_open_folder)
+        act_updates.triggered.connect(_tray_check_updates)
 
         act_quit = QAction("Quit", menu)
         act_quit.triggered.connect(self.app.quit)
 
-        menu.addAction(act_settings)
-        menu.addSeparator()
-        menu.addAction(act_sess)
-        menu.addAction(act_roster)
-        menu.addSeparator()
-        menu.addAction(act_mmr)
-        menu.addAction(act_mmr_ingame)
-        menu.addAction(act_drag)
-        menu.addSeparator()
-        menu.addAction(act_reset)
-        menu.addAction(act_folder)
-        menu.addSeparator()
+        menu.addAction(act_open)
+        menu.addAction(act_updates)
         menu.addAction(act_quit)
 
         tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
         tray.show()
 
         self._tray = tray
-        self._act_sess = act_sess
-        self._act_roster = act_roster
-        self._act_mmr_tracker = act_mmr
-        self._act_mmr_ingame = act_mmr_ingame
-        self._act_drag = act_drag
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self._open_injector()
 
     def run(self) -> int:
         rc = self.app.exec()
