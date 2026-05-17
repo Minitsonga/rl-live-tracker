@@ -4,44 +4,53 @@
 #define MyAppURL "https://github.com/Minitsonga/rl-live-tracker"
 #define MyAppExeName "RLLiveTracker.exe"
 
-; Pass /DMyAppVersion=1.0.0.2 from build.ps1 (dots only for Inno)
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0.2"
+  #define MyAppVersion "1.0.0"
 #endif
 
 [Setup]
 AppId={{A7B4E2C1-9F3D-4A8B-RLT-TRACKER01}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}/releases
-DefaultDirName={localappdata}\Programs\RLLiveTracker
-DefaultGroupName={#MyAppName}
-DisableProgramGroupPage=yes
+DefaultDirName={localappdata}\RLLiveTracker
+UsePreviousAppDir=no
+DirExistsWarning=no
+DisableDirPage=no
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\dist
-OutputBaseFilename=RLLiveTracker-Setup-{#MyAppVersion}
+OutputBaseFilename=RL-LiveTracker-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
+DisableProgramGroupPage=yes
+DefaultGroupName={#MyAppName}
+AlwaysUsePersonalGroup=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
+[CustomMessages]
+english.DirBrowseHint=Type a full path in the field below (you can include a new folder name). The installer will create missing folders. The Browse button only picks existing folders.
+french.DirBrowseHint=Saisissez un chemin complet ci-dessous (vous pouvez inclure un nouveau dossier). L'installateur créera les dossiers manquants. Parcourir ne choisit que des dossiers existants.
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "launch"; Description: "Launch RL Live Tracker after install"; GroupDescription: "Options:"; Flags: checked unchecked
+Name: "launch"; Description: "Launch RL Live Tracker after install"; GroupDescription: "Options:"
 Name: "autostart"; Description: "Start with Windows"; GroupDescription: "Options:"; Flags: unchecked
 
 [Files]
 Source: "..\dist\RLLiveTracker\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
@@ -49,3 +58,47 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "RLLiveTracker"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: autostart; Flags: uninsdeletevalue
+
+[Code]
+procedure DirBrowseButtonClick(Sender: TObject);
+var
+  Dir: string;
+begin
+  Dir := WizardForm.DirEdit.Text;
+  if BrowseForFolder('Select installation folder', Dir, True) then
+    WizardForm.DirEdit.Text := Dir;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dir: string;
+begin
+  Result := True;
+  if CurPageID = wpSelectDir then
+  begin
+    Dir := Trim(WizardForm.DirEdit.Text);
+    if Dir = '' then
+    begin
+      MsgBox('Please choose an installation folder.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if not DirExists(Dir) then
+    begin
+      if not CreateDir(Dir) then
+      begin
+        MsgBox(
+          'Could not create the folder:' + #13#10 + Dir + #13#10#13#10 +
+          'Try another location or type a path that includes a new folder name in the text field.',
+          mbError, MB_OK);
+        Result := False;
+      end;
+    end;
+  end;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID = wpSelectDir then
+    WizardForm.StatusLabel.Caption := ExpandConstant('{cm:DirBrowseHint}');
+end;
