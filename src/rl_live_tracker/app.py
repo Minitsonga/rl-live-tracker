@@ -22,11 +22,7 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .autostart import is_autostart_enabled, set_autostart_enabled
 from .config import apply_theme_preset, load_config, save_config
-from .focus_rl import (
-    is_hwnd_foreground,
-    is_rocket_league_foreground,
-    rocket_league_process_running,
-)
+from .focus_rl import is_hwnd_foreground, is_rocket_league_foreground
 from .mmr import MMRClient, RANKED_PLAYLISTS
 from .paths import DATA_DIR, now_iso
 from .render_roster import (
@@ -219,12 +215,9 @@ class AppController(QObject):
         self._visibility = {"session": vis_s, "roster": vis_r}
         self._drag_mode = False
         self._tray: Optional[QSystemTrayIcon] = None
-        self._rl_was_running = (
-            rocket_league_process_running() if sys.platform == "win32" else True
-        )
-        self._rl_process_poll_i = 0
-        self._rl_process_poll_every = 4  # 4 × 450 ms ≈ 1.8 s
-        self._rl_runtime_active = True
+        # True = Stats API TCP connectée (mode actif) ; False = idle (pause client).
+        self._stats_runtime_active = False
+        self._stats_was_connected = False
         self._update_thread: Optional[_UpdateCheckThread] = None
         self._stats_api_help: Optional[StatsApiHelpDialog] = None
 
@@ -241,12 +234,10 @@ class AppController(QObject):
         self._focus_timer.setInterval(_TIMER_ACTIVE_MS)
         self._focus_timer.timeout.connect(self._on_focus_tick)
         self._focus_timer.start()
-        if sys.platform == "win32" and bool(self.cfg.get("idle_when_rl_closed", True)):
-            self._rl_runtime_active = rocket_league_process_running()
-            if not self._rl_runtime_active:
-                self._apply_idle_runtime(silent=True)
-            else:
-                self._apply_active_runtime(silent=True)
+        if bool(self.cfg.get("idle_when_rl_closed", True)):
+            self._apply_idle_runtime(silent=True)
+        else:
+            self._apply_active_runtime(silent=True)
         self._sync_autostart_from_registry()
         if bool(self.cfg.get("check_updates_on_startup", True)):
             QTimer.singleShot(8000, self._check_updates_startup)
@@ -366,59 +357,42 @@ class AppController(QObject):
             self.overlay_roster.hide()
 
     def _on_focus_tick(self) -> None:
-        self._sync_rl_runtime_mode()
         self._sync_overlay_visibility()
-        self._rl_process_poll_i += 1
-        if self._rl_process_poll_i >= self._rl_process_poll_every:
-            self._rl_process_poll_i = 0
-            self._watch_rl_process_exit()
 
-    def _sync_rl_runtime_mode(self) -> None:
-        if sys.platform != "win32" or not bool(self.cfg.get("idle_when_rl_closed", True)):
-            return
-        running = rocket_league_process_running()
-        if running == self._rl_runtime_active:
-            return
-        self._rl_runtime_active = running
-        if running:
-            self._apply_active_runtime()
-        else:
-            self._apply_idle_runtime()
+    def _idle_on_stats_disconnect(self) -> bool:
+        return bool(self.cfg.get("idle_when_rl_closed", True))
 
     def _apply_idle_runtime(self, *, silent: bool = False) -> None:
-        self.stats.pause()
+        self.stats.resume()
+        self._stats_runtime_active = False
         self._focus_timer.setInterval(_TIMER_IDLE_MS)
-        self._rl_process_poll_every = 1
         if self._tray is not None:
-            self._tray.setToolTip("RL Live Tracker — waiting for Rocket League")
+            self._tray.setToolTip("RL Live Tracker — waiting for Stats API")
         self.overlay_session.hide()
         self.overlay_roster.hide()
         self._refresh_injector_status()
         if not silent:
-            app_log("Idle — Rocket League not running", dim=True)
+            app_log("Idle — Stats API disconnected", dim=True)
 
     def _apply_active_runtime(self, *, silent: bool = False) -> None:
         self.stats.resume()
+        self._stats_runtime_active = True
         self._focus_timer.setInterval(_TIMER_ACTIVE_MS)
-        self._rl_process_poll_every = 4
         if self._tray is not None:
             self._tray.setToolTip("RL Live Tracker")
         self._seed_mmr_from_cache()
         self._sync_overlay_visibility()
         self._refresh_injector_status()
         if not silent:
-            app_log("Active — Rocket League detected")
+            app_log("Active — Stats API connected", dim=True)
 
     def _refresh_injector_status(self) -> None:
-        if sys.platform == "win32" and bool(self.cfg.get("idle_when_rl_closed", True)):
-            if not self._rl_runtime_active:
-                self._injector.set_status_message("Waiting for Rocket League.")
-            else:
-                self._injector.set_status_message("Rocket League is running.")
-        elif rocket_league_process_running():
-            self._injector.set_status_message("Rocket League is running.")
+        if self.session.stats_connected:
+            self._injector.set_status_message("Stats API connected.")
         else:
-            self._injector.set_status_message("Waiting for Rocket League.")
+            self._injector.set_status_message(
+                "Waiting for Stats API — start RL and check DefaultStatsAPI.ini."
+            )
 
     def _sync_autostart_from_registry(self) -> None:
         if sys.platform != "win32":
@@ -600,14 +574,6 @@ class AppController(QObject):
                     f"You are on the latest release (v{__version__}).",
                 )
 
-    def _watch_rl_process_exit(self) -> None:
-        if sys.platform != "win32":
-            return
-        ok = rocket_league_process_running()
-        if self._rl_was_running and not ok:
-            self._reset_session_for_rl_exit()
-        self._rl_was_running = ok
-
     def _clear_post_pending(self) -> None:
         self.post_pending["active"] = False
         self.post_pending["baseline_lu"] = ""
@@ -622,7 +588,7 @@ class AppController(QObject):
         self.state["roster"] = []
         self._match_outcome_recorded = True
         self._last_lobby_sig = None
-        event_log("Session reset (Rocket League closed)", tag="session")
+        event_log("Session reset (Stats API disconnected)", tag="session")
         self.refresh_requested.emit()
 
     def _open_injector(self) -> None:
@@ -862,7 +828,16 @@ class AppController(QObject):
         self._open_overlay_settings()
 
     def _on_stats_conn(self, ok: bool) -> None:
+        prev = self._stats_was_connected
+        self._stats_was_connected = ok
         self.session.stats_connected = ok
+        if self._idle_on_stats_disconnect():
+            if ok and not self._stats_runtime_active:
+                self._apply_active_runtime()
+            elif not ok and self._stats_runtime_active:
+                self._apply_idle_runtime()
+        if prev and not ok:
+            self._reset_session_for_rl_exit()
         self.refresh_requested.emit()
 
     def _on_match_initialized(self, payload: dict) -> None:

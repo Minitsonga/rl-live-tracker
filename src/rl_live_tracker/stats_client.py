@@ -79,7 +79,7 @@ class StatsClient(QObject):
             self._started = False
 
     def pause(self) -> None:
-        """Arrête les tentatives TCP tant que Rocket League n'est pas lancé."""
+        """Arrête les tentatives TCP (rare ; l'idle app repose surtout sur connection_status)."""
         if self._paused:
             return
         self._paused = True

@@ -19,7 +19,7 @@ PacketSendRate=2
 Port=49123
 ```
 
-Restart Rocket League after editing this file.
+Restart Rocket League after editing this file. The tracker connects to `127.0.0.1` on that port only. It does **not** modify game files — only `data/` (config, MMR cache, match log) and `logs/`. **Help → Stats API setup** shows the default relative path `TAGame/Config/DefaultStatsAPI.ini` and a short setup guide.
 
 ## Repository layout
 
@@ -94,7 +94,7 @@ Or double-click `start.bat`.
 
 On start, the **app window** opens unless **Start minimized to tray** is enabled in **Settings**. The app always lives in the system tray while running.
 
-When Rocket League is **not** running, the app stays in **idle** mode (no Stats API TCP retries, slower timers). Launch the tracker when you play, or enable **Run on startup** under **Settings**.
+When the **Stats API** is not connected (`idle_when_rl_closed`, default on), overlays stay hidden and timers slow down; the app keeps light TCP retries until RL exports stats. Launch the tracker when you play, or enable **Run on startup** under **Settings**.
 
 ### Installed size vs BakkesMod
 
@@ -129,7 +129,7 @@ Overlays still respect `require_rl_focus` when RL is not in the foreground (over
 - `self_player_id`: auto-filled after a **1v1** match; otherwise set your local player key manually as `Platform|Uid`.
 - `position_session_anchor` / `position_roster_anchor`: `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `custom` with `position_*_custom_xy` `[x, y]`.
 - `show_session_overlay`, `show_roster_overlay`, `show_mmr_ingame`: persisted overlay visibility.
-- `idle_when_rl_closed`: pause Stats API when `RocketLeague.exe` is absent (default `true`).
+- `idle_when_rl_closed`: idle UI until Stats API TCP connects (default `true`); session resets on disconnect.
 - `check_updates_on_startup`: optional GitHub Releases check (default `true`; also in **Settings**).
 - `launch_at_windows_startup`: HKCU Run entry (default `false`; **Settings → Run on startup**).
 - `close_to_tray`: when `true`, the window **X** hides to the tray instead of quitting (default `false`).
