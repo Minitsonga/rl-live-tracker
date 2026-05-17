@@ -62,6 +62,7 @@ class StatsClient(QObject):
         self._in_replay = False
         self._update_state_count_this_match = 0
         self._last_game_block: Optional[dict] = None
+        self._local_player_key: Optional[str] = None
 
     def start(self) -> None:
         if not self._started:
@@ -91,6 +92,11 @@ class StatsClient(QObject):
         if not self._paused:
             return
         self._paused = False
+        # pause() cancels the asyncio task; the worker thread may have exited.
+        if not self._thread.is_alive():
+            self._started = False
+            self._loop = None
+            self._task = None
         self.start()
 
     def _run(self):
@@ -263,6 +269,10 @@ class StatsClient(QObject):
                 "name": name,
                 "team": int(team),
             }
+            if self._local_player_key is None and any(
+                p.get(flag) for flag in ("bLocalPlayer", "bIsLocal", "IsLocal", "bLocallyControlled")
+            ):
+                self._local_player_key = key
             if any(k in p for k in SPECTATOR_FIELDS):
                 spectator_team_hits.add(int(team))
         if self._my_team is None and len(spectator_team_hits) == 1:
@@ -334,4 +344,5 @@ class StatsClient(QObject):
             "arena": self._arena,
             "myTeam": self._my_team,
             "players": list(self._roster.values()),
+            "localPlayerKey": self._local_player_key,
         })
