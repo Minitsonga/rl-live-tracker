@@ -8,7 +8,7 @@ import subprocess
 import threading
 from typing import Any, Callable, Optional
 
-from PySide6.QtCore import QLockFile, QObject, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QLockFile, QObject, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -468,7 +468,7 @@ class AppController(QObject):
         )
         quit_btn = box.addButton("Quit", QMessageBox.ButtonRole.DestructiveRole)
         hide_btn = box.addButton("Hide to tray", QMessageBox.ButtonRole.AcceptRole)
-        cancel_btn = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(hide_btn)
         cb = QCheckBox("Don't ask again")
         box.setCheckBox(cb)
@@ -500,7 +500,7 @@ class AppController(QObject):
             "Quit application", QMessageBox.ButtonRole.DestructiveRole
         )
         hide_btn = box.addButton("Hide to tray", QMessageBox.ButtonRole.AcceptRole)
-        cancel_btn = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(quit_btn)
         cb = QCheckBox("Don't ask again")
         box.setCheckBox(cb)
