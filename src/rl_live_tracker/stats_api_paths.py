@@ -11,12 +11,12 @@ from typing import Optional
 STATS_API_INI_NAME = "DefaultStatsAPI.ini"
 
 
-def stats_api_ini_from_exe(rocket_league_exe: Path) -> Path:
+def stats_api_ini_from_exe(rocket_league_exe: Path) -> PureWindowsPath:
     """`TAGame/Binaries/Win64/RocketLeague.exe` → `TAGame/Config/DefaultStatsAPI.ini`."""
     # PureWindowsPath: même arbre TAGame/... sur Linux (CI) et Windows.
     exe = PureWindowsPath(rocket_league_exe)
     tagame_dir = exe.parent.parent.parent
-    return Path(tagame_dir / "Config" / STATS_API_INI_NAME)
+    return tagame_dir / "Config" / STATS_API_INI_NAME
 
 
 def rocket_league_exe_path() -> Optional[Path]:
@@ -91,7 +91,7 @@ def _common_install_roots() -> list[Path]:
     return roots
 
 
-def resolve_default_stats_api_ini() -> Optional[Path]:
+def resolve_default_stats_api_ini() -> Optional[PureWindowsPath]:
     """
     Chemin attendu de DefaultStatsAPI.ini.
     Priorité : jeu lancé → emplacements d'installation courants.

@@ -1,19 +1,25 @@
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from rl_live_tracker.stats_api_paths import (
+    STATS_API_INI_NAME,
     example_stats_api_ini,
     stats_api_ini_from_exe,
 )
 
+_EPIC_EXE = PureWindowsPath(
+    r"C:\Program Files\Epic Games\rocketleague\TAGame\Binaries\Win64\RocketLeague.exe"
+)
+_EPIC_INI = PureWindowsPath(
+    r"C:\Program Files\Epic Games\rocketleague\TAGame\Config\DefaultStatsAPI.ini"
+)
+
 
 def test_stats_api_ini_from_exe_epic_layout():
-    exe = Path(
-        r"C:\Program Files\Epic Games\rocketleague\TAGame\Binaries\Win64\RocketLeague.exe"
-    )
-    ini = stats_api_ini_from_exe(exe)
-    assert ini == Path(
-        r"C:\Program Files\Epic Games\rocketleague\TAGame\Config\DefaultStatsAPI.ini"
-    )
+    ini = stats_api_ini_from_exe(Path(_EPIC_EXE))
+    assert ini == _EPIC_INI
+    assert ini.name == STATS_API_INI_NAME
+    assert ini.parent.name == "Config"
+    assert ini.parent.parent.name == "TAGame"
 
 
 def test_example_stats_api_ini_uses_port():
