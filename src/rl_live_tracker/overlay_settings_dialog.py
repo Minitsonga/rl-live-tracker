@@ -1,8 +1,8 @@
-"""F5 settings panel: visibility, anchors, themes and per-overlay opacity."""
+"""Overlay settings panel (F5) — separate from the main app injector window."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractButton,
     QButtonGroup,
@@ -18,11 +18,11 @@ from PySide6.QtWidgets import (
 )
 
 from .config import THEME_PRESETS
-from .overlay_widgets import CORNER_ANCHORS, resolve_overlay_screen
+from .overlay_widgets import ALL_ANCHORS, resolve_overlay_screen
 from .render_roster import ROSTER_MMR_PRESET_OPTIONS
 
 
-ANCHOR_ORDER = CORNER_ANCHORS + ("custom",)
+ANCHOR_ORDER = ALL_ANCHORS
 ANCHOR_LABELS = {
     "top-left": "◤ TL",
     "top-right": "◥ TR",
@@ -32,18 +32,17 @@ ANCHOR_LABELS = {
 }
 
 
-class MenuPanel(QWidget):
+class OverlaySettingsDialog(QWidget):
     toggleSession = Signal(bool)
     toggleRoster = Signal(bool)
     toggleMmr = Signal(bool)
     rosterMmrPresetChanged = Signal(str)
     themePresetChanged = Signal(str)
     lobbyPreviewToggled = Signal(bool)
-    autostartToggled = Signal(bool)
-    anchorChanged = Signal(str, str)  # "session"|"roster", anchor id
+    anchorChanged = Signal(str, str)
     dragRequested = Signal()
     dragFinished = Signal()
-    menuClosed = Signal()
+    settingsClosed = Signal()
 
     def __init__(self, cfg: dict):
         super().__init__()
@@ -58,18 +57,22 @@ class MenuPanel(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground, False)
         self.setAutoFillBackground(True)
-        self.setWindowTitle("RL Live Tracker — Settings")
+        self.setWindowTitle("RL Live Tracker — Overlay Settings")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         root = QVBoxLayout(self)
         root.setSpacing(8)
         root.setContentsMargins(12, 12, 12, 10)
 
-        title = QLabel("RL Live Tracker")
-        title.setFont(QFont("Segoe UI", 11, QFont.Bold))
-        title.setStyleSheet("color: #e8f0ff; background: transparent;")
+        title = QLabel("Overlay Settings")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(
+            "color: #e8f0ff; font-size: 13px; font-weight: bold; background: transparent;"
+        )
         root.addWidget(title)
 
         sub = QLabel("F5 or Esc: close")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub.setStyleSheet("color: #9ab0cc; font-size: 9px; background: transparent;")
         root.addWidget(sub)
 
@@ -91,13 +94,31 @@ class MenuPanel(QWidget):
         self._btn_drag.clicked.connect(self._on_drag_clicked)
         root.addWidget(self._btn_drag)
 
-        tabs = QTabWidget()
-        tabs.setStyleSheet(
-            "QTabWidget::pane { border: 1px solid rgba(80, 110, 150, 90); border-radius: 4px; top: -1px; }"
-            "QTabBar::tab { background: rgba(40, 52, 72, 220); color: #c8d8ec; padding: 6px 10px; margin-right: 3px; border-radius: 3px; }"
-            "QTabBar::tab:selected { background: rgba(0, 100, 140, 200); color: #ffffff; }"
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(
+            "QTabWidget::pane {"
+            "  border: 1px solid rgba(80, 110, 150, 90);"
+            "  border-radius: 4px;"
+            "  top: -1px;"
+            "  background: rgba(22, 30, 44, 252);"
+            "}"
+            "QTabBar::tab {"
+            "  background: rgba(40, 52, 72, 220);"
+            "  color: #c8d8ec;"
+            "  padding: 6px 10px;"
+            "  margin-right: 3px;"
+            "  border-radius: 3px;"
+            "  font-size: 10px;"
+            "}"
+            "QTabBar::tab:selected {"
+            "  background: rgba(0, 100, 140, 200);"
+            "  color: #ffffff;"
+            "}"
         )
-        root.addWidget(tabs)
+        tab_bar = self._tabs.tabBar()
+        tab_bar.setUsesScrollButtons(False)
+        tab_bar.setExpanding(True)
+        root.addWidget(self._tabs)
 
         tab_global = QWidget()
         g_layout = QVBoxLayout(tab_global)
@@ -105,23 +126,16 @@ class MenuPanel(QWidget):
         g_layout.setSpacing(8)
 
         sec_display = QLabel("Display")
-        sec_display.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        sec_display.setStyleSheet(
+            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
+        )
         g_layout.addWidget(sec_display)
 
         self._cb_session = QCheckBox("Show Stats Tracker")
         self._cb_roster = QCheckBox("Show Lobby Ranks")
         self._cb_mmr = QCheckBox("Show in-game MMR")
         for cb in (self._cb_session, self._cb_roster, self._cb_mmr):
-            cb.setStyleSheet(
-                "QCheckBox {"
-                "  color: #e4eaf4; spacing: 8px;"
-                "  background: rgba(40, 52, 72, 220);"
-                "  padding: 6px 8px; border-radius: 4px;"
-                "  border: 1px solid rgba(80, 110, 150, 90);"
-                "}"
-                "QCheckBox:hover { background: rgba(50, 64, 88, 255); }"
-                "QCheckBox::indicator { width: 16px; height: 16px; }"
-            )
+            self._style_checkbox(cb)
         self._cb_session.toggled.connect(self.toggleSession.emit)
         self._cb_roster.toggled.connect(self.toggleRoster.emit)
         self._cb_mmr.toggled.connect(self.toggleMmr.emit)
@@ -130,7 +144,9 @@ class MenuPanel(QWidget):
         g_layout.addWidget(self._cb_mmr)
 
         sec_theme = QLabel("Theme preset")
-        sec_theme.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        sec_theme.setStyleSheet(
+            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
+        )
         g_layout.addWidget(sec_theme)
         self._combo_theme = QComboBox()
         for pid, payload in THEME_PRESETS.items():
@@ -138,47 +154,29 @@ class MenuPanel(QWidget):
         self._combo_theme.currentIndexChanged.connect(self._emit_theme_preset)
         self._style_combo(self._combo_theme)
         g_layout.addWidget(self._combo_theme)
-
-        sec_startup = QLabel("Windows")
-        sec_startup.setStyleSheet(
-            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
-        )
-        g_layout.addWidget(sec_startup)
-        self._cb_autostart = QCheckBox("Start with Windows (optional)")
-        self._cb_autostart.setStyleSheet(
-            "QCheckBox {"
-            "  color: #e4eaf4; spacing: 8px;"
-            "  background: rgba(40, 52, 72, 220);"
-            "  padding: 6px 8px; border-radius: 4px;"
-            "  border: 1px solid rgba(80, 110, 150, 90);"
-            "}"
-            "QCheckBox:hover { background: rgba(50, 64, 88, 255); }"
-            "QCheckBox::indicator { width: 16px; height: 16px; }"
-        )
-        self._cb_autostart.toggled.connect(self.autostartToggled.emit)
-        g_layout.addWidget(self._cb_autostart)
-
         g_layout.addStretch(1)
-        tabs.addTab(tab_global, "Global settings")
+        self._tabs.addTab(tab_global, "Global settings")
 
         tab_session = QWidget()
         s_layout = QVBoxLayout(tab_session)
         s_layout.setContentsMargins(8, 8, 8, 8)
-        s_layout.setSpacing(8)
         sec_session = QLabel("Position")
-        sec_session.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        sec_session.setStyleSheet(
+            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
+        )
         s_layout.addWidget(sec_session)
         self._session_group, sess_row = self._build_anchor_row("session")
         s_layout.addLayout(sess_row)
         s_layout.addStretch(1)
-        tabs.addTab(tab_session, "Stats Tracker")
+        self._tabs.addTab(tab_session, "Stats Tracker")
 
         tab_roster = QWidget()
         r_layout = QVBoxLayout(tab_roster)
         r_layout.setContentsMargins(8, 8, 8, 8)
-        r_layout.setSpacing(8)
-        sec_roster = QLabel("Lobby Display Text")
-        sec_roster.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        sec_roster = QLabel("Lobby display text")
+        sec_roster.setStyleSheet(
+            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
+        )
         r_layout.addWidget(sec_roster)
         self._combo_roster_mmr = QComboBox()
         for _pid, label in ROSTER_MMR_PRESET_OPTIONS:
@@ -187,12 +185,35 @@ class MenuPanel(QWidget):
         self._style_combo(self._combo_roster_mmr)
         r_layout.addWidget(self._combo_roster_mmr)
         sec_roster_position = QLabel("Position")
-        sec_roster_position.setStyleSheet("color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;")
+        sec_roster_position.setStyleSheet(
+            "color: #b8d4f0; font-size: 9px; font-weight: bold; background: transparent;"
+        )
         r_layout.addWidget(sec_roster_position)
         self._roster_group, rost_row = self._build_anchor_row("roster")
         r_layout.addLayout(rost_row)
         self._cb_lobby_preview = QCheckBox("Preview lobby overlay (outside match)")
-        self._cb_lobby_preview.setStyleSheet(
+        self._style_checkbox(self._cb_lobby_preview)
+        self._cb_lobby_preview.toggled.connect(self.lobbyPreviewToggled.emit)
+        r_layout.addWidget(self._cb_lobby_preview)
+        r_layout.addStretch(1)
+        self._tabs.addTab(tab_roster, "Lobby Ranks")
+
+        self.setStyleSheet(
+            "OverlaySettingsDialog {"
+            "  background-color: rgb(24, 30, 44);"
+            "  border: 1px solid rgba(0, 200, 255, 120);"
+            "  border-radius: 8px;"
+            "}"
+        )
+
+        sc = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        sc.activated.connect(self.close_settings)
+
+        self.adjustSize()
+
+    def _style_checkbox(self, cb: QCheckBox) -> None:
+        cb.setStyleSheet(
             "QCheckBox {"
             "  color: #e4eaf4; spacing: 8px;"
             "  background: rgba(40, 52, 72, 220);"
@@ -202,23 +223,6 @@ class MenuPanel(QWidget):
             "QCheckBox:hover { background: rgba(50, 64, 88, 255); }"
             "QCheckBox::indicator { width: 16px; height: 16px; }"
         )
-        self._cb_lobby_preview.toggled.connect(self.lobbyPreviewToggled.emit)
-        r_layout.addWidget(self._cb_lobby_preview)
-        r_layout.addStretch(1)
-        tabs.addTab(tab_roster, "Lobby Ranks")
-
-        self.setStyleSheet(
-            "MenuPanel {"
-            "  background-color: rgb(24, 30, 44);"
-            "  border: 1px solid rgba(0, 200, 255, 120);"
-            "  border-radius: 8px;"
-            "}"
-        )
-
-        sc = QShortcut(QKeySequence(Qt.Key_Escape), self)
-        sc.activated.connect(self._on_escape)
-
-        self.adjustSize()
 
     def _style_combo(self, combo: QComboBox) -> None:
         combo.setStyleSheet(
@@ -229,7 +233,8 @@ class MenuPanel(QWidget):
             "}"
             "QComboBox::drop-down { border: none; width: 18px; }"
             "QComboBox QAbstractItemView {"
-            "  background: rgb(32, 42, 58); color: #e4eaf4; selection-background-color: rgba(0, 100, 140, 200);"
+            "  background: rgb(32, 42, 58); color: #e4eaf4;"
+            "  selection-background-color: rgba(0, 100, 140, 200);"
             "}"
         )
 
@@ -238,7 +243,6 @@ class MenuPanel(QWidget):
         row.setSpacing(4)
         group = QButtonGroup(self)
         group.setExclusive(True)
-
         for i, aid in enumerate(ANCHOR_ORDER):
             b = QPushButton(ANCHOR_LABELS[aid])
             b.setCheckable(True)
@@ -274,6 +278,33 @@ class MenuPanel(QWidget):
         pid = self._combo_theme.currentData()
         if pid:
             self.themePresetChanged.emit(str(pid))
+
+    def sync_from_app(
+        self,
+        vis_session: bool,
+        vis_roster: bool,
+        show_mmr: bool,
+        preview_lobby: bool,
+    ) -> None:
+        self._cb_session.blockSignals(True)
+        self._cb_roster.blockSignals(True)
+        self._cb_mmr.blockSignals(True)
+        self._cb_lobby_preview.blockSignals(True)
+        self._cb_session.setChecked(vis_session)
+        self._cb_roster.setChecked(vis_roster)
+        self._cb_mmr.setChecked(show_mmr)
+        self._cb_lobby_preview.setChecked(preview_lobby)
+        self._cb_session.blockSignals(False)
+        self._cb_roster.blockSignals(False)
+        self._cb_mmr.blockSignals(False)
+        self._cb_lobby_preview.blockSignals(False)
+
+        sa = str(self._cfg.get("position_session_anchor") or "top-right").lower()
+        ra = str(self._cfg.get("position_roster_anchor") or "top-left").lower()
+        self._sync_anchor_group(self._session_group, sa)
+        self._sync_anchor_group(self._roster_group, ra)
+        self._sync_roster_mmr_combo()
+        self._sync_theme_combo()
 
     def _sync_roster_mmr_combo(self) -> None:
         preset = str(self._cfg.get("roster_mmr_preset") or "full").strip().lower()
@@ -311,36 +342,6 @@ class MenuPanel(QWidget):
         finally:
             group.blockSignals(False)
 
-    def sync_from_app(
-        self,
-        vis_session: bool,
-        vis_roster: bool,
-        show_mmr: bool,
-        preview_lobby: bool,
-    ) -> None:
-        self._cb_session.blockSignals(True)
-        self._cb_roster.blockSignals(True)
-        self._cb_mmr.blockSignals(True)
-        self._cb_lobby_preview.blockSignals(True)
-        self._cb_autostart.blockSignals(True)
-        self._cb_session.setChecked(vis_session)
-        self._cb_roster.setChecked(vis_roster)
-        self._cb_mmr.setChecked(show_mmr)
-        self._cb_lobby_preview.setChecked(preview_lobby)
-        self._cb_autostart.setChecked(bool(self._cfg.get("launch_at_windows_startup")))
-        self._cb_session.blockSignals(False)
-        self._cb_roster.blockSignals(False)
-        self._cb_mmr.blockSignals(False)
-        self._cb_lobby_preview.blockSignals(False)
-        self._cb_autostart.blockSignals(False)
-
-        sa = str(self._cfg.get("position_session_anchor") or "top-right").lower()
-        ra = str(self._cfg.get("position_roster_anchor") or "top-left").lower()
-        self._sync_anchor_group(self._session_group, sa)
-        self._sync_anchor_group(self._roster_group, ra)
-        self._sync_roster_mmr_combo()
-        self._sync_theme_combo()
-
     def is_drag_from_menu_active(self) -> bool:
         return self._drag_from_menu
 
@@ -358,20 +359,31 @@ class MenuPanel(QWidget):
         self._drag_from_menu = bool(enabled)
         self._btn_drag.setText("Drag overlays: ON" if self._drag_from_menu else "Drag overlays: OFF")
 
-    def _on_escape(self) -> None:
-        self.close_menu()
-
-    def present(self, vis_session: bool, vis_roster: bool, show_mmr: bool, preview_lobby: bool) -> None:
+    def present(
+        self,
+        vis_session: bool,
+        vis_roster: bool,
+        show_mmr: bool,
+        preview_lobby: bool,
+    ) -> None:
         self.sync_from_app(vis_session, vis_roster, show_mmr, preview_lobby)
         self._btn_drag.setText("Drag overlays: ON" if self._drag_from_menu else "Drag overlays: OFF")
         self.show()
         self.raise_()
         self.activateWindow()
+        self.setFocus()
         self._center_on_screen()
 
-    def close_menu(self) -> None:
+    def close_settings(self) -> None:
         self.hide()
-        self.menuClosed.emit()
+        self.settingsClosed.emit()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.key() == Qt.Key.Key_Escape:
+            self.close_settings()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
