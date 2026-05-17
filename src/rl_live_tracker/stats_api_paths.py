@@ -5,7 +5,7 @@ import ctypes
 import os
 import sys
 from ctypes import wintypes
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Optional
 
 STATS_API_INI_NAME = "DefaultStatsAPI.ini"
@@ -13,9 +13,10 @@ STATS_API_INI_NAME = "DefaultStatsAPI.ini"
 
 def stats_api_ini_from_exe(rocket_league_exe: Path) -> Path:
     """`TAGame/Binaries/Win64/RocketLeague.exe` → `TAGame/Config/DefaultStatsAPI.ini`."""
-    exe = Path(rocket_league_exe).resolve()
+    # PureWindowsPath: même arbre TAGame/... sur Linux (CI) et Windows.
+    exe = PureWindowsPath(rocket_league_exe)
     tagame_dir = exe.parent.parent.parent
-    return tagame_dir / "Config" / STATS_API_INI_NAME
+    return Path(tagame_dir / "Config" / STATS_API_INI_NAME)
 
 
 def rocket_league_exe_path() -> Optional[Path]:
