@@ -35,7 +35,9 @@ jobs:
 
   unit-tests-dev-to-staging:
     name: Unit tests (dev -> staging)
-    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'staging' && github.head_ref == 'dev' }}
+    if: >-
+      (github.event_name == 'pull_request' && github.base_ref == 'staging' && github.head_ref == 'dev')
+      || (github.event_name == 'push' && github.ref == 'refs/heads/staging')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,7 +61,9 @@ jobs:
 
   release-gate-staging-to-main:
     name: Release gate (staging -> main)
-    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'staging' }}
+    if: >-
+      (github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'staging')
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -80,9 +80,12 @@ $env:PYTHONPATH = "$PWD\src"; pytest -q
 ```
 
 CI runs the same checks on `dev`, `staging`, and `main` pushes and on PRs targeting `staging`/`main`.
-Pushing a version tag (example: `v1.0.0`) runs the Release workflow: GitHub release notes, source archive, and Windows **RL-LiveTracker-Setup.exe** when the Windows build job succeeds.
 
-Pre-release example: `v1.0-beta.2` (sources only, no installer).
+**Release (Windows installer):** the [Release workflow](.github/workflows/release.yml) runs when you **merge `staging` → `main`** (push to `main`) or when you push a tag `v*` (example: `v1.0.0`). It reads `version` from `pyproject.toml`, builds **RL-LiveTracker-Setup.exe**, and attaches it to the GitHub release (notes from `docs/RELEASE_vX.Y.Z.md` when that file exists). You do not need to upload the `.exe` by hand after a normal merge to `main`.
+
+Optional: push only the tag `git push origin v1.0.0` to re-run or publish without merging again.
+
+Pre-release example: `v1.0-beta.2` (use a beta tag; full installer workflow expects branding assets on `main`).
 
 ## Run
 
