@@ -78,7 +78,10 @@ a = Analysis(
     [str(root / "packaging" / "entry.py")],
     pathex=[str(src)],
     binaries=[],
-    datas=[],
+    datas=[
+        (str(root / "packaging" / "branding" / "app_icon.png"), "branding"),
+        (str(root / "packaging" / "branding" / "app.ico"), "branding"),
+    ],
     hiddenimports=[
         "pynput",
         "pynput.keyboard",
@@ -125,6 +128,7 @@ exe = EXE(
     strip=True,
     upx=False,
     console=False,
+    icon=str(root / "packaging" / "branding" / "app.ico"),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

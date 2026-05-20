@@ -8,7 +8,7 @@ import subprocess
 import threading
 from typing import Any, Callable, Optional
 
-from PySide6.QtCore import QLockFile, QObject, QThread, QTimer, Signal
+from PySide6.QtCore import QLockFile, QObject, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,7 +24,8 @@ from .autostart import is_autostart_enabled, set_autostart_enabled
 from .config import apply_theme_preset, load_config, save_config
 from .focus_rl import is_hwnd_foreground, is_rocket_league_foreground
 from .mmr import MMRClient, RANKED_PLAYLISTS
-from .paths import DATA_DIR, now_iso
+from .paths import DATA_DIR, branding_path, now_iso
+from .ui_theme import apply_app_theme
 from .render_roster import (
     render_roster_html,
     render_roster_preview_html,
@@ -91,15 +92,68 @@ def _trn_last_updated_is_newer(cur_lu: Any, baseline_lu: Any) -> bool:
         return sa > sb
 
 
-def _make_tray_icon() -> QIcon:
-    pix = QPixmap(64, 64)
+_WINDOW_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+_TRAY_ICON_SIZES = (16, 24, 32)
+
+
+def _fallback_cyan_icon(size: int = 64) -> QIcon:
+    pix = QPixmap(size, size)
     pix.fill(QColor(0, 0, 0, 0))
     p = QPainter(pix)
     p.setBrush(QColor(0, 200, 255))
     p.setPen(QColor(0, 140, 180))
-    p.drawRoundedRect(8, 8, 48, 48, 10, 10)
+    m = max(2, size // 8)
+    p.drawRoundedRect(m, m, size - 2 * m, size - 2 * m, size // 6, size // 6)
     p.end()
     return QIcon(pix)
+
+
+def _icon_from_png(png_path: str, sizes: tuple[int, ...]) -> QIcon:
+    base = QPixmap(png_path)
+    if base.isNull():
+        return QIcon()
+    icon = QIcon()
+    for side in sizes:
+        scaled = base.scaled(
+            side,
+            side,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        scaled.setDevicePixelRatio(1.0)
+        icon.addPixmap(scaled)
+    return icon
+
+
+def _icon_from_ico() -> QIcon:
+    ico = branding_path("app.ico")
+    if not ico.is_file():
+        return QIcon()
+    icon = QIcon(str(ico))
+    return icon if not icon.isNull() else QIcon()
+
+
+def _app_window_icon() -> QIcon:
+    """Barre des tâches / titre : .ico multi-résolution (évite le flou HiDPI)."""
+    icon = _icon_from_ico()
+    if not icon.isNull():
+        return icon
+    png = branding_path("app_icon.png")
+    if png.is_file():
+        icon = _icon_from_png(str(png), _WINDOW_ICON_SIZES)
+        if not icon.isNull():
+            return icon
+    return _fallback_cyan_icon(256)
+
+
+def _make_tray_icon() -> QIcon:
+    """Zone de notification : petites tailles (déjà nettes à l'échelle tray)."""
+    png = branding_path("app_icon.png")
+    if png.is_file():
+        icon = _icon_from_png(str(png), _TRAY_ICON_SIZES)
+        if not icon.isNull():
+            return icon
+    return _fallback_cyan_icon(32)
 
 
 def _hotkey_to_pynput(spec: str) -> str:
@@ -186,6 +240,7 @@ class AppController(QObject):
         self.overlay_roster.positionCommitted.connect(lambda: self._on_overlay_position_committed("roster"))
 
         self._injector = InjectorWindow()
+        self._injector.setWindowIcon(_app_window_icon())
         self._overlay_settings = OverlaySettingsDialog(self.cfg)
         self._wire_injector_signals()
         self._wire_overlay_settings_signals()

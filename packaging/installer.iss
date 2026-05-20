@@ -32,6 +32,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 DefaultGroupName={#MyAppName}
 AlwaysUsePersonalGroup=yes
+SetupIconFile=..\packaging\branding\app.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

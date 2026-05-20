@@ -11,6 +11,14 @@ from typing import Optional
 _APP_NAME = "RLLiveTracker"
 
 
+def branding_path(name: str) -> Path:
+    """PNG/ICO embarqués : dev = packaging/branding/, frozen = _MEIPASS/branding/."""
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+        return base / "branding" / name
+    return Path(__file__).resolve().parents[2] / "packaging" / "branding" / name
+
+
 def app_root() -> Path:
     """Racine données utilisateur (dev : repo ; frozen : %LocalAppData%\\RLLiveTracker)."""
     if getattr(sys, "frozen", False):

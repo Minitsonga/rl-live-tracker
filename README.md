@@ -27,7 +27,7 @@ Restart Rocket League after editing this file. The tracker connects to `127.0.0.
 rl-live-tracker/
   .github/workflows/   # CI and release (Windows installer on version tags)
   docs/dev/            # overlay HTML design references (not shipped)
-  packaging/           # PyInstaller spec, Inno Setup, build.ps1, prune_bundle.ps1
+  packaging/           # PyInstaller spec, Inno Setup, build.ps1, branding (app_icon_source.png → app_icon.png / app.ico)
   src/rl_live_tracker/ # application code
   tests/
   config.example.json  # optional template for data/config.json

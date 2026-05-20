@@ -22,7 +22,12 @@ if ($running) {
 }
 
 python -m pip install -q -e .
-python -m pip install -q pyinstaller
+python -m pip install -q pyinstaller pillow
+if (-not (Test-Path "packaging\branding\app_icon.png")) {
+    throw "Missing packaging\branding\app_icon.png - add the app logo PNG before building."
+}
+python packaging\make_icon.py
+if ($LASTEXITCODE -ne 0) { throw "make_icon.py failed" }
 
 if (Test-Path "build\pyinstaller") {
     Remove-Item -Recurse -Force "build\pyinstaller"
@@ -74,4 +79,4 @@ $setup = "dist\RL-LiveTracker-Setup.exe"
 if (-not (Test-Path $setup)) {
     throw "Installer not found: $setup"
 }
-Write-Host "Done: $setup ($sizeMb MB installed folder before compression)"
+Write-Host "Done: $setup (${sizeMb} MB installed folder before compression)"
