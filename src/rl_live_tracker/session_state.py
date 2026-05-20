@@ -23,6 +23,25 @@ def mmr_for_playlist(entry: Optional[dict], playlist: str) -> Optional[int]:
     return None
 
 
+def session_mmr_from_entry(entry: Optional[dict], playlist: str) -> Optional[int]:
+    """MMR pour la carte session : mode actif, puis autre mode classé, puis best TRN."""
+    if not entry or entry.get("not_found"):
+        return None
+    m = mmr_for_playlist(entry, playlist)
+    if m is not None:
+        return m
+    for pl in RANKED_PLAYLISTS:
+        if pl == playlist:
+            continue
+        m = mmr_for_playlist(entry, pl)
+        if m is not None:
+            return m
+    best = entry.get("best")
+    if isinstance(best, dict) and best.get("mmr") is not None:
+        return int(best["mmr"])
+    return None
+
+
 @dataclass
 class PlaylistSession:
     wins: int = 0
@@ -76,13 +95,24 @@ class SessionState:
         """Compat logs : cumul MMR session par playlist."""
         return {k: v.mmr_delta_session for k, v in self._by_pl.items() if v.mmr_delta_session != 0}
 
-    def reset_counters(self) -> None:
+    def reset_session(self) -> None:
+        """Remet à zéro stats session overlay (W/L, cumul MMR, baselines)."""
         self._by_pl.clear()
         self._mmr_at_match_start = None
         self._mmr_baseline_reliable = False
         self.current_mmr = None
         self.last_completed_mmr_delta = None
         self.mmr_session_start.clear()
+        self.active_playlist = "other"
+        self.self_name = None
+
+    def reset_counters(self) -> None:
+        self.reset_session()
+
+    def clear_active_match_baseline(self) -> None:
+        """Annule la baseline du match en cours sans toucher W/L ni cumul session."""
+        self._mmr_at_match_start = None
+        self._mmr_baseline_reliable = False
 
     def record_session_start_mmr_if_needed(
         self, playlist: str, mmr: Optional[int]
