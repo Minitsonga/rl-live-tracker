@@ -153,7 +153,7 @@ class AppController(QObject):
             "roster": [],
             "in_match": False,
         }
-        # True après MatchEnded traité ; MatchDestroyed sans fin ne compte pas en W/L.
+        # True après MatchEnded ou défaite synthétique (destroy sans fin).
         self._match_outcome_recorded = True
         self.post_pending = {
             "active": False,
@@ -887,6 +887,8 @@ class AppController(QObject):
         self.refresh_requested.emit()
 
     def _on_match_ended(self, payload: dict) -> None:
+        if self._match_outcome_recorded:
+            return
         self._match_outcome_recorded = True
         self.state["in_match"] = False
         won = payload["winner"] == payload["myTeam"]
@@ -1047,18 +1049,18 @@ class AppController(QObject):
             self.post_pending["active"] = False
             self.refresh_requested.emit()
 
-    def _on_match_aborted_without_end(self) -> None:
-        """MatchDestroyed sans MatchEnded : lobby annulé / connexion — non compté en W/L."""
+    def _synthetic_aborted_match_loss(self) -> None:
+        """MatchDestroyed sans MatchEnded : défaite par défaut (forfait, quit, lobby annulé)."""
         self._match_outcome_recorded = True
-        self.session.clear_active_match_baseline()
+        self.session.on_match_ended_outcome(False)
         event_log(
-            "Match annulé — non compté (pas de fin officielle)",
+            "Match closed without end event — counted as loss",
             tag="session",
         )
 
     def _on_match_destroyed(self) -> None:
         if self.state["in_match"] and not self._match_outcome_recorded:
-            self._on_match_aborted_without_end()
+            self._synthetic_aborted_match_loss()
         self.state["in_match"] = False
         self.state["roster"] = []
         self._last_lobby_sig = None

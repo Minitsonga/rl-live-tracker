@@ -118,7 +118,7 @@ Overlay settings (visibility, themes, screen corners, drag mode) are separate fr
 - **Position**: four corners or **Custom**; **Drag overlays** saves custom coordinates to `data/config.json`.
 - **Esc** or **F5** closes the overlay settings panel (does not quit the app).
 
-**Session stats (W/L, MMR cumulative on the session card):** only matches that end with an official **MatchEnded** event are counted. Lobbies cancelled before the game starts (e.g. a player failed to connect, **MatchDestroyed** without **MatchEnded**) are ignored. When you **close Rocket League**, the overlay session (W/L, streaks, session MMR total) is reset for the next play session.
+**Session stats (W/L, MMR cumulative on the session card):** a **win** is recorded only when **MatchEnded** reports your team as winner. If a match ends without **MatchEnded** (forfeit, quit during replay, crash, or lobby closed early), it counts as a **loss**. When you **close Rocket League**, the overlay session (W/L, streaks, session MMR total) is reset for the next play session.
 
 Overlays still respect `require_rl_focus` when RL is not in the foreground (overlay settings panel can stay open).
 

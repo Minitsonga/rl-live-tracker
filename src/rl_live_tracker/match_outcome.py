@@ -2,6 +2,6 @@
 from __future__ import annotations
 
 
-def should_count_match_outcome(*, match_ended_recorded: bool) -> bool:
-    """True seulement si MatchEnded a été traité (fin officielle)."""
-    return match_ended_recorded
+def should_ignore_late_match_ended(*, match_outcome_recorded: bool) -> bool:
+    """True si MatchEnded doit être ignoré (défaite déjà comptée sur destroy)."""
+    return match_outcome_recorded
