@@ -27,6 +27,7 @@ class InjectorWindow(QMainWindow):
         self._suppress_minimize_once = False
 
         self.setWindowTitle("RL Live Tracker")
+        self.setStyleSheet("QMainWindow { background-color: #181c2c; }")
         self.resize(420, 140)
         self.setMinimumSize(360, 120)
 
@@ -40,9 +41,10 @@ class InjectorWindow(QMainWindow):
         self._status = QLabel(self._message)
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status.setWordWrap(True)
-        font = QFont("Segoe UI", 11)
-        font.setBold(True)
+        font = QFont("Segoe UI", 12)
+        font.setBold(False)
         self._status.setFont(font)
+        self._status.setStyleSheet("color: #e4eaf4;")
         layout.addWidget(self._status)
 
         layout.addStretch(1)

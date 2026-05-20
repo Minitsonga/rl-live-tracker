@@ -32,6 +32,7 @@ class StatsApiHelpDialog(QDialog):
             "This app only reads and writes its own data/ and logs/ folders."
         )
         intro.setWordWrap(True)
+        intro.setStyleSheet("color: #e4eaf4; font-size: 10pt;")
         layout.addWidget(intro)
 
         steps = QLabel(
@@ -49,9 +50,12 @@ class StatsApiHelpDialog(QDialog):
         steps.setWordWrap(True)
         steps.setTextFormat(Qt.TextFormat.RichText)
         steps.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        steps.setStyleSheet("color: #e4eaf4; font-size: 10pt;")
         layout.addWidget(steps)
 
-        layout.addWidget(QLabel("Example DefaultStatsAPI.ini"))
+        example_lbl = QLabel("Example DefaultStatsAPI.ini")
+        example_lbl.setStyleSheet("color: #c8d0e0; font-size: 10pt;")
+        layout.addWidget(example_lbl)
         self._example = QPlainTextEdit()
         self._example.setReadOnly(True)
         self._example.setMaximumHeight(72)

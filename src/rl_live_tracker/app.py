@@ -168,6 +168,8 @@ class AppController(QObject):
 
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
+        apply_app_theme(self.app)
+        self.app.setWindowIcon(_app_window_icon())
 
         self.overlay_session = TransparentOverlay(
             self.cfg,
