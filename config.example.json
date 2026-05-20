@@ -39,5 +39,9 @@
   "font_size": 10,
   "overlay_padding_px": [4, 6],
   "overlays_visible_default": true,
-  "roster_visible_default": false
+  "roster_visible_default": false,
+  "close_to_tray": false,
+  "start_minimized_to_tray": false,
+  "check_updates_on_startup": true,
+  "launch_at_windows_startup": false
 }
