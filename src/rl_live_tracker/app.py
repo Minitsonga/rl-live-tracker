@@ -367,7 +367,7 @@ class AppController(QObject):
         self._stats_runtime_active = False
         self._focus_timer.setInterval(_TIMER_IDLE_MS)
         if self._tray is not None:
-            self._tray.setToolTip("RL Live Tracker — waiting for Stats API")
+            self._tray.setToolTip("RL Live Tracker — waiting for Rocket League")
         self.overlay_session.hide()
         self.overlay_roster.hide()
         self._refresh_injector_status()
@@ -388,11 +388,9 @@ class AppController(QObject):
 
     def _refresh_injector_status(self) -> None:
         if self.session.stats_connected:
-            self._injector.set_status_message("Stats API connected.")
+            self._injector.set_status_message("Rocket League is running.")
         else:
-            self._injector.set_status_message(
-                "Waiting for Stats API — start RL and check DefaultStatsAPI.ini."
-            )
+            self._injector.set_status_message("Waiting for Rocket League.")
 
     def _sync_autostart_from_registry(self) -> None:
         if sys.platform != "win32":
